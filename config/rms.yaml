@@ -1,0 +1,142 @@
+# rms configuration.
+#
+# Every value may reference the environment as ${VAR} or ${VAR:-default}.
+# Referencing an unset variable without a default is a startup error.
+
+server:
+  # Primary, multi-namespace listener. Clients write the namespace explicitly:
+  #   docker pull <host>:5000/docker.io/library/alpine
+  #   docker push <host>:5000/alice/myapp:v1
+  listen: "0.0.0.0:5000"
+
+  # Origin clients use to reach the primary listener, used only to build the
+  # absolute URLs returned by blob uploads. Leave empty when rms is reached
+  # directly: the registry engine then derives the origin from each request,
+  # which automatically handles every host and port it is reachable on. Set it
+  # when TLS terminates upstream, otherwise upload Locations would say "http".
+  external_url: "${RMS_EXTERNAL_URL:-}"
+
+  # Upload-state secret. Leave empty to derive a stable value from the storage
+  # root and hostname (warned about at startup); set it to control it, or let it
+  # come from RMS_HTTP_SECRET.
+  http_secret: "${RMS_HTTP_SECRET:-}"
+
+  # Trust X-Forwarded-* when behind a reverse proxy.
+  behind_proxy: false
+  graceful_shutdown: 20s
+
+storage:
+  # Per-namespace roots are created underneath: <root>/<namespace>.
+  root: "${RMS_STORAGE_ROOT:-/data}"
+  delete_enabled: true
+  upload_purge:
+    enabled: true
+    age: 168h
+    interval: 24h
+
+auth:
+  type: htpasswd
+  htpasswd: "${RMS_HTPASSWD:-/etc/rms/htpasswd}"
+  realm: rms
+
+  # Every htpasswd user owns a namespace named after them:
+  #   docker push <host>:5000/alice/myapp:v1  ->  /data/alice
+  user_namespace: true
+
+  # Extra writable namespaces that any authenticated user may push to.
+  shared_namespaces: [me, shared]
+
+  # Proxy namespaces are public caches, so anonymous pulls are allowed there.
+  # Local namespaces stay private.
+  anonymous_pull_proxy: true
+  anonymous_pull_local: false
+
+  # May read /v2/_catalog and push to any local namespace.
+  admin_users: [admin]
+
+namespaces:
+  # Unqualified requests fall back here, implementing
+  #   <host>:5000/<user>/<image>  ->  <host>:5000/docker.io/<user>/<image>
+  default: docker.io
+
+  proxy:
+    docker.io:
+      # Tried in order; the first reachable endpoint is elected and re-elected
+      # automatically when it fails.
+      #
+      # To prefer an existing mirror instead of Docker Hub directly, put it
+      # first. Note that an internal mirror is only reachable from the host that
+      # has the VPN route -- see the reachability matrix in the README:
+      #   - "http://10.82.64.172:5000"
+      #   - "http://10.82.64.172:5001"
+      upstreams:
+        - "https://registry-1.docker.io"
+      # Mirrors Docker Hub's rule that "alpine" means "library/alpine".
+      official_library: true
+      # 0 disables expiry. This also avoids installing distribution's TTL
+      # scheduler, which is what makes upstream failover rebuilds safe.
+      ttl: 0
+
+    ghcr.io:
+      upstreams: ["https://ghcr.io"]
+
+    gcr.io:
+      upstreams: ["https://gcr.io"]
+
+    quay.io:
+      upstreams: ["https://quay.io"]
+
+    registry.k8s.io:
+      upstreams: ["https://registry.k8s.io"]
+
+# Additional listeners. A listener bound to a namespace serves that namespace
+# with no namespace in the path, which is what containerd's registries.yaml and
+# docker's registry-mirrors require -- neither can express a path between /v2/
+# and the repository name.
+listeners:
+  # Restates the primary listener; kept explicit for readability.
+  - listen: "0.0.0.0:5000"
+    namespace: ""
+  - listen: "0.0.0.0:5001"
+    namespace: docker.io
+  - listen: "0.0.0.0:5002"
+    namespace: ghcr.io
+
+upstream:
+  health:
+    enabled: true
+    interval: 30s
+    # Generous: through a shared HTTP proxy, quay.io and registry.k8s.io have
+    # been measured at 4-5s, and a probe timeout that is too tight marks a
+    # perfectly good endpoint unhealthy.
+    timeout: 10s
+    # Two consecutive failures evict an endpoint; one success brings it back.
+    fail_threshold: 2
+    success_threshold: 1
+    path: /v2/
+
+  http:
+    # Empty falls back to HTTP_PROXY / HTTPS_PROXY / NO_PROXY from the
+    # environment, which is how the compose stack is configured.
+    proxy: "${RMS_UPSTREAM_PROXY:-}"
+    no_proxy: "${RMS_NO_PROXY:-}"
+    dial_timeout: 10s
+    response_header_timeout: 60s
+    tls_handshake_timeout: 10s
+    idle_conn_timeout: 90s
+    insecure_skip_verify: false
+
+observability:
+  logs:
+    level: info
+    format: json
+  traces:
+    # SigNoz OTLP endpoint for this environment.
+    enabled: true
+    endpoint: "192.168.188.103:4317"
+    insecure: true
+    sample_ratio: 0.2
+  metrics:
+    listen: "0.0.0.0:9100"
+    path: /metrics
+  pprof: false

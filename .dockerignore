@@ -1,0 +1,15 @@
+# Never ship these into the image.
+.git
+.gitignore
+.docker
+.gocache
+bin
+data
+docs
+coverage.out
+*.log
+.env
+.env.local
+README.md
+LICENSE
+Makefile

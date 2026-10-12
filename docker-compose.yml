@@ -1,0 +1,93 @@
+# rms — caching registry mirror.
+#
+#   make prepare   # creates ./data owned by the container user (needs root)
+#   make up        # docker compose up -d --build
+#
+# The proxy variables matter: on 192.168.188.101 public registries are only
+# reachable through http://192.168.188.1:3128, and on 192.168.188.103 that proxy
+# is unnecessary while the internal mirrors at 10.82.64.172 are unreachable. See
+# .env.example and the reachability matrix in the README.
+
+services:
+  rms:
+    build:
+      context: .
+      # Override for a constrained network: RMS_DOCKERFILE=Dockerfile.binary
+      # (after `make build`) and RMS_RUNTIME_BASE=<base image with CA certs>.
+      dockerfile: ${RMS_DOCKERFILE:-Dockerfile}
+      args:
+        RUNTIME_BASE: ${RMS_RUNTIME_BASE:-gcr.io/distroless/static-debian12:nonroot}
+        VERSION: ${RMS_VERSION:-dev}
+        COMMIT: ${RMS_COMMIT:-none}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    image: ${RMS_IMAGE:-rms:dev}
+    container_name: rms
+    restart: unless-stopped
+
+    ports:
+      # Primary multi-namespace endpoint, e.g.
+      #   docker pull <host>:5000/docker.io/library/alpine
+      - "${RMS_PORT_PRIMARY:-5000}:5000"
+      # Namespace-bound mirrors for containerd registries.yaml / docker
+      # registry-mirrors, e.g. docker.io -> :5001, ghcr.io -> :5002
+      - "${RMS_PORT_DOCKERIO:-5001}:5001"
+      - "${RMS_PORT_GHCR:-5002}:5002"
+      # Prometheus / pprof. Bind to loopback unless a scraper needs it.
+      - "${RMS_PORT_METRICS:-9100}:9100"
+
+    volumes:
+      # Per-namespace caches: ./data/<namespace>/docker/registry/v2/...
+      - ${RMS_DATA_DIR:-./data}:/data
+
+      # The whole config directory, not the individual files.
+      #
+      # `rms htpasswd add` (and `make htpasswd`) replaces the htpasswd file
+      # atomically by writing a temp file and renaming it over the target. A
+      # file-level bind mount pins the *original inode*, so the container would
+      # keep reading the old file forever and `kill -s HUP` would appear to do
+      # nothing. Mounting the directory keeps renames visible.
+      - ./config:/etc/rms:ro
+
+    environment:
+      # Outbound transport for upstream registries. Empty falls back to the
+      # standard variables below.
+      RMS_UPSTREAM_PROXY: ${RMS_UPSTREAM_PROXY:-}
+      RMS_NO_PROXY: ${RMS_NO_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,192.168.188.0/24,10.82.0.0/16,10.44.0.0/16}
+      # Stable upload-state secret; without it rms derives one from the storage
+      # root and hostname, which is stable but not operator-controlled.
+      RMS_HTTP_SECRET: ${RMS_HTTP_SECRET:-}
+      # Origin clients use for the primary listener. Leave empty when rms is
+      # reached directly; set it (https://...) when TLS terminates upstream.
+      RMS_EXTERNAL_URL: ${RMS_EXTERNAL_URL:-}
+      # Where the cache lives inside the container.
+      RMS_STORAGE_ROOT: /data
+      RMS_HTPASSWD: /etc/rms/htpasswd
+
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/rms", "healthcheck", "--addr", "http://127.0.0.1:5000/v2/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+    # SigNoz runs on 192.168.188.103, so traces are exported over the network by
+    # default (observability.traces.endpoint) rather than to a local collector.
+    # To run a local collector instead, uncomment:
+    # depends_on:
+    #   - otel-collector
+
+# A named volume is the alternative to the bind mount above when the host
+# directory cannot be chowned to the container user:
+# volumes:
+#   rms-data:

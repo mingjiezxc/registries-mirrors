@@ -1,0 +1,28 @@
+# Runtime-only image for an already-built binary.
+#
+# Use this when the Go toolchain image cannot be pulled (constrained network) or
+# in CI where the binary is built once and reused:
+#
+#   make build
+#   docker build -f Dockerfile.binary --build-arg RUNTIME_BASE=<base with CA certs> -t rms:dev .
+#
+# The binary must be a static build (CGO_ENABLED=0), which is what `make build`
+# produces. The runtime base needs CA certificates: rms talks HTTPS to public
+# registries.
+
+ARG RUNTIME_BASE=gcr.io/distroless/static-debian12:nonroot
+FROM ${RUNTIME_BASE}
+
+ARG BINARY=bin/rms
+COPY ${BINARY} /usr/local/bin/rms
+
+USER 65532:65532
+WORKDIR /
+
+EXPOSE 5000 5001 5002 9100
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD ["/usr/local/bin/rms", "healthcheck", "--addr", "http://127.0.0.1:5000/v2/"]
+
+ENTRYPOINT ["/usr/local/bin/rms"]
+CMD ["serve", "--config", "/etc/rms/rms.yaml"]

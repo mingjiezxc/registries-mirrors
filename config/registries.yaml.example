@@ -1,0 +1,79 @@
+# containerd / k3s registry mirror configuration for rms.
+#
+# K3s:        /etc/rancher/k3s/registries.yaml   then `systemctl restart k3s`
+# containerd: /etc/containerd/certs.d/<host>/hosts.toml (see the hosts.toml
+#             variant at the bottom), or the deprecated `registry.mirrors` block.
+#
+# WHY PORTS AND NOT PATHS
+# ----------------------
+# containerd builds a mirror request from the endpoint as follows
+# (core/remotes/docker/config/hosts.go):
+#
+#     if len(u.Path) > 0 {
+#         u.Path = path.Clean(u.Path)
+#         if !strings.HasSuffix(u.Path, "/v2") && !config.OverridePath {
+#             u.Path = u.Path + "/v2"          # path lands BEFORE /v2
+#         }
+#     } else if !config.OverridePath {
+#         u.Path = "/v2"
+#     }
+#
+# so "http://host/docker.io" would be requested as "/docker.io/v2/<repo>" rather
+# than "/v2/docker.io/<repo>", and `registries.yaml` has no override_path field
+# to change that. Docker's daemon.json is stricter still: a path in
+# registry-mirrors is rejected outright by ValidateMirror, and registry-mirrors
+# only ever applies to Docker Hub.
+#
+# Therefore each upstream gets its own port on the rms side, and the namespace is
+# implied by the port. Client image names stay completely unqualified:
+#
+#     docker.io/library/alpine  ->  http://<rms>:5001/v2/library/alpine/...
+
+mirrors:
+  docker.io:
+    endpoint:
+      - "http://192.168.188.101:5001"
+
+  ghcr.io:
+    endpoint:
+      - "http://192.168.188.101:5002"
+
+  # Add a port-bound listener in rms's `listeners` for any further upstream, for
+  # example gcr.io:5003, then reference it here.
+
+configs:
+  # Credentials are only needed for private (local) namespaces. Public cache
+  # namespaces are readable anonymously, so omit the block entirely if you only
+  # mirror.
+  "192.168.188.101:5001":
+    auth:
+      username: alice
+      password: alicepw
+    tls:
+      # rms serves plain HTTP here; TLS is terminated by the reverse proxy in
+      # front of the primary endpoint.
+      insecure_skip_verify: true
+
+  "192.168.188.101:5002":
+    tls:
+      insecure_skip_verify: true
+
+# ---------------------------------------------------------------------------
+# hosts.toml variant, if you prefer the modern layout
+# ---------------------------------------------------------------------------
+#
+# /etc/containerd/certs.d/docker.io/hosts.toml
+#
+#   server = "https://registry-1.docker.io"
+#
+#   [host."http://192.168.188.101:5001"]
+#     capabilities = ["pull", "resolve"]
+#     skip_verify = true
+#
+# `override_path = true` additionally lets the *primary* endpoint be used with a
+# path prefix, because it tells containerd to treat the whole path as the API
+# root:
+#
+#   [host."http://192.168.188.101:5000/v2/docker.io"]
+#     capabilities = ["pull", "resolve"]
+#     override_path = true

@@ -1,0 +1,22 @@
+# Go build / module caches (relocated into the repo in this sandbox)
+/.gocache/
+
+# Docker CLI and buildx state, including `docker login` credentials
+/.docker/
+
+# Local runtime data: registry storage
+/data/
+/bin/
+coverage.out
+*.log
+
+# Local overrides
+.env
+.env.local
+/config/htpasswd.local
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
