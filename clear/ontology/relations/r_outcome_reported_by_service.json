@@ -1,0 +1,10 @@
+{
+  "id": "r_outcome_reported_by_service",
+  "label": "选择结果由服务写回客户端",
+  "kind": "affects",
+  "domain": "selection_outcome",
+  "range": "service",
+  "shape": "threshold",
+  "gloss": "全都不存在时写回 404 NAME_UNKNOWN，全部不可达时写回 503 UNAVAILABLE。",
+  "basis": "本次改动：dispatcher 在无法选定服务方时写回的 registry v2 错误包络"
+}

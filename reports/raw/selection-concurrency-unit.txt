@@ -1,0 +1,5 @@
+=== RUN   TestDecideProbesCandidatesConcurrently
+    chooser_test.go:488: concurrency: skew between the two upstreams = 247µs; total Decide = 151.632ms (two serial probes would be >= 300ms)
+--- PASS: TestDecideProbesCandidatesConcurrently (0.15s)
+PASS
+ok  	github.com/watsons/rms/internal/selection	0.158s

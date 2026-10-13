@@ -1,0 +1,20 @@
+# 门禁原始输出（最终，2026-10-13T11:04:01+08:00）
+$ make check
+go fmt ./...
+go vet ./...
+go test ./...
+?   	github.com/watsons/rms/cmd/rms	[no test files]
+ok  	github.com/watsons/rms/internal/app	(cached)
+ok  	github.com/watsons/rms/internal/auth	(cached)
+ok  	github.com/watsons/rms/internal/config	(cached)
+?   	github.com/watsons/rms/internal/httpx	[no test files]
+ok  	github.com/watsons/rms/internal/namespace	(cached)
+ok  	github.com/watsons/rms/internal/obs	(cached)
+ok  	github.com/watsons/rms/internal/registry	(cached)
+ok  	github.com/watsons/rms/internal/registryapp	(cached)
+ok  	github.com/watsons/rms/internal/selection	(cached)
+ok  	github.com/watsons/rms/internal/server	(cached)
+ok  	github.com/watsons/rms/internal/storage	(cached)
+ok  	github.com/watsons/rms/internal/upstream	(cached)
+ok  	github.com/watsons/rms/test/distbehavior	(cached)
+EXIT=0

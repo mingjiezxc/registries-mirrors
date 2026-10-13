@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-2388d7fb094d6944080c2a94e04e4590-u2",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "同一报告内候选数自相矛盾：reports/103-selection-rollout.md:35「并发探测 5 个 proxy namespace」对 :124「并发探测 10 个候选」，两者都描述上线后，且 103 rms.yaml 实为 10 个。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "同报告内 5 与 10 并存确实矛盾。已改：上线前后对照表那一行现在写「并发探测所有 proxy namespace……**上线当时是 5 个；2026-10-13 增配后交付态是 10 个**」并指向同一文件里的「追加：新增 9 个上游 namespace」小节；判据⑥的原始抓取指针也已区分「交付态（10 候选）」与「增配前（5 候选）」两份文件。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:2388d7fb094d6944080c2a94e04e4590#u2",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791861002606,
+  "updated": 1791862477399
+}

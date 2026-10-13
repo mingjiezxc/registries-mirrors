@@ -1,0 +1,10 @@
+{
+  "basis": "本目标新增的组件：并发探测候选上游并给出服务 namespace",
+  "id": "svc_rms_sel",
+  "label": "rms 并发选择器（internal/selection）",
+  "provenance": {
+    "kind": "named",
+    "ref": "internal/selection/chooser.go"
+  },
+  "type": "service"
+}

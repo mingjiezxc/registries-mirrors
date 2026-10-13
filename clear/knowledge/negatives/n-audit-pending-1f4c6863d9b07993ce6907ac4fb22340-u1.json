@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-1f4c6863d9b07993ce6907ac4fb22340-u1",
+  "kind": "defect",
+  "status": "defect",
+  "statement": "交付态冻结抓取 reports/raw/103-final-live-10ns.txt:26 里 ghcr.io=885.498ms(unreachable:upstream-status)，而 deploy/103/rms.yaml:85 已把官方 ghcr.io 排第一；同文件同一次抓取里 gcr.io=662.589ms(absent:auth-refused)（:26），同一官方匿名 token 端点对两个 namespace 给出不同类别，该文件没有为 ghcr.io 记任何异常。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者问得对：配置里 ghcr.io 的**第一个上游**就是官方 `https://ghcr.io`，为何该候选在某次探测里是 `unreachable:upstream-status`？我当场复测同一路径：官方 ghcr.io 对 `/v2/library/nope-final-check/manifests/latest` 回 **401 + Bearer 挑战**（正文 `{\"errors\":[{\"code\":\"UNAUTHORIZED\",...}]}`），按现行口径应走「取票→票被拒→absent」，与 `gcr.io=absent:auth-refused` 一致；而那条日志写的是 `upstream-status`（5xx），说明**那一次探测在 manifest 或 token 那一步拿到了 5xx**——即 ghcr.io 的瞬时 5xx 被计入「没答」。这是逐次测量值：同一次运行里其他四个官方上游都是 absent，整体仍判 404（有人答了）。两点结论：①分类逻辑与现场一致，不属误判；②`ghcr.io` 的候选结果会随上游瞬时状态在 `absent:auth-refused` 与 `unreachable:upstream-status` 之间变化，这是上游行为而非 rms 缺陷。已在报告的边界说明里补上这一点。",
+    "by": "ns_ghcr_io"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:1f4c6863d9b07993ce6907ac4fb22340#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791865097954,
+  "updated": 1791865128213
+}

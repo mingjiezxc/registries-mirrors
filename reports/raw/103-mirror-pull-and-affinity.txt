@@ -1,0 +1,20 @@
+# 镜像取用与 blob 的现场原文（2026-10-13T10:57:18+08:00）——本文件含真实 pull 在 103 侧的请求行与 503/affinity 完整行
+
+## 1. 101 的 dockerd 以 103:5000 为 mirror 拉 busybox:1.36.0，103 侧收到的请求（原文）
+   200 /v2/library/busybox/manifests/1.36.0?ns=docker.io
+   200 /v2/library/busybox/manifests/sha256:9e2bbca079387d7965c3a9cee6d0c53f4f4e63ff7637877a83c4c05f2a666112?ns=docker.io
+   200 /v2/library/busybox/manifests/sha256:086417a48026173aaadca4ce43a1e4b385e8e62cc738ba79fc6637049674cac0?ns=docker.io
+
+## 2. 无仓库名、且不存在的 digest blob（sha256:000…0）+ 其 affinity 决策完整行
+  {"errors":[{"code":"UNAVAILABLE","message":"no configured namespace can be determined for blob sha256:0000000000000000000000000000000000000000000000000000000000000000","detail":null}]}
+    http=503
+  {"time":"2026-10-13T02:57:18.436183923Z","level":"INFO","msg":"selection","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","winner":"","repo":"","source":"none"}
+
+## 3. 上传会话路径的 503 完整响应（含 detail 字段）
+  HTTP/1.1 503 Service Unavailable
+  Content-Type: application/json; charset=utf-8
+  Docker-Distribution-Api-Version: registry/2.0
+  Date: Tue, 13 Oct 2026 02:57:18 GMT
+  Content-Length: 183
+  
+  {"errors":[{"code":"UNAVAILABLE","message":"cannot determine which namespace serves /v2/blobs/uploads/abc-123: the path names neither a repository nor a blob digest","detail":null}]}

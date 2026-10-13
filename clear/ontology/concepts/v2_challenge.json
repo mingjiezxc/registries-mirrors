@@ -1,0 +1,6 @@
+{
+  "gloss": "registry API 根在无凭据时返回 401 + WWW-Authenticate 的行为;docker 客户端是「被挑战驱动」的,rms 对 /v2/ 总是挑战。",
+  "id": "v2_challenge",
+  "kind": "phenomenon",
+  "label": "/v2/ 的 401 挑战"
+}

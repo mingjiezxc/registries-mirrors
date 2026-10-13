@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-1621fc7223a13af6ed09db99f63bea52-u3",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "「并发压缩比」的取值口径在产物内不自洽：reports/selection-verification.md:29 的 3.58x 既不等于其源文件汇总行的 3.53x（reports/raw/selection-real-upstream.txt:239），也不等于同表 24.9s/6.6s=3.77，无法复算；直接相关的判据 3 结论靠这条读数支撑",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "这是我转写核验记录时的错误，不是读数本身矛盾：源文件 reports/raw/selection-real-upstream.txt 的汇总行给的是 proxy 压缩比中位 3.53x（2.80x–4.68x）、direct 中位 3.80x（3.00x–4.25x），我先前写成 3.58x 并自己另算了串行/墙钟中位（24.9s/6.6s，与 3.58 不自洽）。已把 reports/selection-verification.md 第二节改回逐字照抄源文件的口径（spread 中位 0.12ms、proxy 中位 3.53x、direct 中位 3.80x、典型对照 proxy round1 native 串行 14.3s→并发 5.1s），不再自算比值。",
+    "by": "probe_concurrency_gap"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:1621fc7223a13af6ed09db99f63bea52#u3",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791851491935,
+  "updated": 1791862477394
+}

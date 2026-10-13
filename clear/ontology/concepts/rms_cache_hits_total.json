@@ -1,0 +1,7 @@
+{
+  "gloss": "rms 指标:对象已在本地、无需拉取内容;tag 请求仍可能有一次上游校验。",
+  "id": "rms_cache_hits_total",
+  "kind": "measure",
+  "label": "缓存命中计数",
+  "unit": "count"
+}

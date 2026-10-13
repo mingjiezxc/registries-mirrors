@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-7a3bec96f13336e79b04ab38635f67ef-u5",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "报告第三节 :67-69 引用 clear/knowledge 的三个 negatives（x-h-nccqnt / n-u-iiyp8u / n-u-s01do2），我核对三份 JSON：x-h-nccqnt 的 scope 条件仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」，而本次改动已删除 15000–15006 且要求客户端改指 :5000——报告 :67 只说「机制未被改坏」，未说明该条 scope 已不再覆盖现行部署形态。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者指出引用条目的 scope 仍写着 5000/15000-15006 这套已删除的端口拓扑。这属于**记忆条目的 scope 过期**，而不是我的引用不成立：三条 negatives 记的机制（`/v2/` 401 挑战让 dockerd 放弃镜像源、103 直连官方 Hub 间歇 reset、只看 `/v2/` 探活漏掉取内容失败）本次都再次成立，我已按这三条机制逐条说明适用性；但它们的 scope/端口名单是历史拓扑。已按系统的更正机制写入一份更正文档（Hindsight：Correction: 103 的端口拓扑与无限定请求语义已变），说明 15000–15006 与 namespaces.default 已删除、哪些结论仍成立、哪些表述应视为历史。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:7a3bec96f13336e79b04ab38635f67ef#u5",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791854009275,
+  "updated": 1791862477395
+}

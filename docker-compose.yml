@@ -3,6 +3,24 @@
 #   make prepare   # creates ./data owned by the container user (needs root)
 #   make up        # docker compose up -d --build
 #
+# Two ports, and only two:
+#
+#   5000   the primary endpoint. Multi-namespace: a namespace written in the
+#          path (docker.io/library/alpine) goes straight to that namespace,
+#          while an unqualified request (library/alpine) is resolved by probing
+#          every proxy namespace and serving from the fastest one that really
+#          has the repository.
+#   9100   metrics. Bind it to loopback unless a scraper needs it.
+#
+# There are deliberately no namespace-bound ports. The earlier scheme
+# (docker.io -> :5001, ghcr.io -> :5002, ...) is gone together with the
+# `listeners` config block it depended on, so adding a mapping back here would
+# start a container with nowhere to route it — the config no longer has a key
+# that could bind a port to a namespace. This file and deploy/103/
+# docker-compose.yml are the same shape; see the README section on why the
+# per-upstream ports were removed, and what that costs clients that can only be
+# pointed at a bare host:port.
+#
 # The proxy variables matter: on 192.168.188.101 public registries are only
 # reachable through http://192.168.188.1:3128, and on 192.168.188.103 that proxy
 # is unnecessary while the internal mirrors at 10.82.64.172 are unreachable. See
@@ -28,12 +46,9 @@ services:
 
     ports:
       # Primary multi-namespace endpoint, e.g.
-      #   docker pull <host>:5000/docker.io/library/alpine
+      #   docker pull <host>:5000/docker.io/library/alpine   (explicit namespace)
+      #   docker pull <host>:5000/library/alpine              (unqualified: rms picks)
       - "${RMS_PORT_PRIMARY:-5000}:5000"
-      # Namespace-bound mirrors for containerd registries.yaml / docker
-      # registry-mirrors, e.g. docker.io -> :5001, ghcr.io -> :5002
-      - "${RMS_PORT_DOCKERIO:-5001}:5001"
-      - "${RMS_PORT_GHCR:-5002}:5002"
       # Prometheus / pprof. Bind to loopback unless a scraper needs it.
       - "${RMS_PORT_METRICS:-9100}:9100"
 

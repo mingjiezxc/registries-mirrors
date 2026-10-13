@@ -1,0 +1,295 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "bad32660-f7a8-4cfe-8758-c454be99b10c",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:68 用它支撑「删端口不破主流程」,但该条 scope 仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」(clear/knowledge/negatives/x-h-nccqnt.json:20、:23),正是本次删掉的拓扑,系统亦判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17)。机制(401 挑战让 dockerd 放弃镜像源)本次仍成立,但本次范围内未建立适用性。"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:70 引用;该条 scope 端口名单同为旧拓扑,系统判 out_of_scope(goal:27)。它说的「只看 /v2/ 探活会漏掉取内容失败」确实是本次改动的针对对象,但据此不能判定整条适用。"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:69 用它支撑「不可达只留给传输失败」;direct 组实测确有超时/重置(.probe/selection/raw-direct.jsonl),但该条 scope 是旧端口拓扑,系统判 out_of_scope(goal:22),范围适用性未建立。"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "inconclusive",
+      "basis": "goal:22 把它登记为 h-0afup5(探测并发性)的 uses 并判 out_of_scope;报告正文未引用它。它讲的是上游带宽/并发争用,与本次并发探测墙钟读数同向但不在同一坐标。"
+    }
+  ],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/103-selection-rollout.md:47-49、:60 的四项读数——`b58899` 子 manifest 200、blob「581 字节、9.3ms」、`repo=library/alpine` 的 affinity 决策日志、`sha256:000…0`→404 BLOB_UNKNOWN——在 reports/raw/ 全无出处(全库检索 581/9.3ms/BLOB_UNKNOWN/该 affinity 行只命中这份报告);且 9.3ms 与同一交付里 reports/selection-verification.md:80 依 reports/raw/103-selection-rollout-live.txt:7-9 写出的 3.5/1.6/1.8ms 是同一请求的两个数。做的人未登记。另:clear/goals/plans/p-mv5ewcefw",
+      "matters": "no"
+    },
+    {
+      "what": "任务书给的账本坐标里 evidence `e-gqu8jh` 是 verdict=refute,但工作区查不到它的内容(检索 gqu8jh 无命中),也没有产物说明它推翻的是哪条观测、是否已在本轮修正中解决。",
+      "matters": "unclear"
+    },
+    {
+      "what": "四条判断的 uses 全被系统判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32),根源是 clear/knowledge/negatives/x-h-nccqnt.json:20、:23 的 scope 仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」;reports/selection-verification.md:63-65 称已「以两份更正文档 + 本节说明呈现」,但对 Hindsight/Correction 检索只命中记载该 claim 的 audit/negative 条目与报告本身,工作区里不存在那两份更正文档。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "记录里确实发生过:上线后拼错镜像名返 503,决策日志显示 gcr.io/ghcr.io/quay.io 判 unreachable(reports/103-selection-rollout.md:84),改为「认证流程走完的 401/403/404 算明确不存在、只有传输层失败算不可达」后复验 404;实现见 probe.go:258-277 与 errAuthRefused(:364),raw 依据是 raw-proxy 里 ghcr/gcr 匿名 token 端点 403。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我按 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算恰 6 格翻转(ghcr.io/gcr.io 的 native 组各 3 轮 200→404),其余 66 格一致;probe.go:340 探测请求带 manifestAccept。缺 Accept 会把存在的镜像判 404 这条在该现场成立。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "本次复跑 TestUnqualifiedBlobFollowsTheManifest 与 TestUnqualifiedBlobWithUnknownDigestIsUnavailable 均 PASS(顶层 9 PASS);dispatch.go:295 blobTarget 与 :530 retryTarget 首次与重试共用同一查找,blobEnginePath 补回仓库段。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "实现与用例都按这个规则:dispatch.go:380/:387 把 ErrNotFound 映成 404 NAME_UNKNOWN、ErrUnreachable 映成 503;chooser_test.go:1187 的「一候选 404 + 一候选不可达」子用例本次复跑通过;103 现场五候选全 absent 回到 404(reports/raw/103-selection-503-and-logs.txt:17)。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "本交付连续多轮被退回的正是「产物里的数字/引用与落盘原文对不上」(0.12ms vs 0.152ms、2 格 vs 6 格、ERR 组别错、无出处日志),本轮已按逐字抄/附复算脚本改过:concurrency-stats 附逐组表、第八节给脚本,我复算得 0.152/0.145ms、3.53x/3.80x 与报告一致;照它做下次会更好,且本轮 rollout §5 仍留同类残留(见 anomalies)。"
+    }
+  ],
+  "basis": "六条判据逐条满足,关键观测我独立复现(任务书给的 /tmp 副本不存在,我在 /tmp 自建副本复跑,原工作区只读)。硬信号:gofmt 干净、make check 退出码 0、go test ./... 全 ok、go test -race ./internal/selection/ ok、go test -tags e2e 顶层 10 用例=9 PASS+1 SKIP(RUN 行 28、子测试 18、0 FAIL);副本新编二进制复跑 config validate,old-default 报 `line 4: field default not found in type config.Namespaces`、old-listeners 报 `line 7: field listeners not found in type config.Config`,与 reports/raw/selection-unit-and-config.txt:13、:16 逐字一致(config.go:290 KnownFields(true))。①probe.go:139/:153 并发同 deadline、:255 只把 2xx 记成存在、:258-277 走 Bearer token 重试、:548-558 按 TTL 写决策与仓库亲和,并发/只认 2xx/token/TTL/两种错误语义五类单测齐;②config.go:163 只剩 namespaces.selection,dispatch.go:380/:387 映射 404/503、:461 仅 GET/HEAD 重选一次;③compose/.env/deploy rms.yaml 无 15000–15006 映射(命中仅在 README 迁移表);④e2e 三条新增用例我复跑通过;⑥端口/缓存命中/404/503/决策耗时均有 raw 出处。转写复核:我从 raw jsonl 独立复算得 proxy spread 0.152ms/0.405ms、压缩比 3.53x(2.80–4.68),direct 0.145/0.479ms、3.80x(3.00–4.25),start_offset 50.164–50.960/50.191–50.878ms;proxy 与 noaccept 逐格比对恰 6 格翻转——与报告逐项吻合。缺口见 anomalies(rollout §5 三项读数无落盘出处且与其自身引用的 raw 冲突);四条被引 negatives 的 scope 仍是已删除的旧端口拓扑,故 reuse 判 inconclusive。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "internal/selection/probe.go",
+      "line": 139
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 153
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 255
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 258
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 267
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 468
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 548
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 53
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 459
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 498
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1084
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1187
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 163
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 290
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 13
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "line": 101
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 380
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 387
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 461
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 199
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 632
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 709
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 31
+    },
+    {
+      "path": "deploy/103/.env",
+      "line": 12
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 46
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 49
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 57
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 58
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 74
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 80
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 85
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 94
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 40
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 43
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 48
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 60
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 31
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 38
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 9
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 17
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/103-selection-rollout-live.txt",
+      "line": 15
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 36
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 13
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 20
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    },
+    {
+      "path": "clear/knowledge/facts/INDEX.md",
+      "line": 8
+    },
+    {
+      "path": "clear/goals/plans/p-mv5ewcefwt9a.md",
+      "line": 11
+    },
+    {
+      "path": "clear/ontology/verification-loop.md",
+      "line": 96
+    }
+  ],
+  "card": "六条判据逐条满足,关键观测我独立复现(任务书给的 /tmp 副本不存在,我在 /tmp 自建副本复跑,原工作区只读)。硬信号:gofmt 干净、make check 退出码 0、go test ./... 全 ok、go test -race ./internal/selection/ ok、go test -tags e2e 顶层 10 用例=9 PASS+1 SKIP(RUN 行 28、子测试 18、0 FAIL);副本新编二进制复跑 config validate,old-default 报 `line 4: field default not found in type config.Namespaces`、old-listeners 报 `line 7: field listeners not found in type config.Config`,与 reports/raw/selection-unit-and-config.txt:13、:16 逐字一致(config.go:290 KnownFields(true))。①probe.go:139/:153 并发同 deadline、:255 只把 2xx 记成存在、:258-277 走 Bearer token 重试、:548-558 按 TTL 写决策与仓库亲和,并发/只认 2xx/token/TTL/两种错误语义五类单测齐;②config.go:163 只剩 namespaces.selection,dispatch.go:380/:387 映射 404/503、:461 仅 GET/HEAD 重选一次;③compose/.env/deploy rms.yaml 无 15000–15006 映射(命中仅在 README 迁移表);④e2e 三条新增用例我复跑通过;⑥端口/缓存命中/404/503/决策耗时均有 raw 出处。转写复核:我从 raw jsonl 独立复算得 proxy spread 0.152ms/0.405ms、压缩比 3.53x(2.80–4.68),direct 0.145/0.479ms、3.80x(3.00–4.25),start_offset 50.164–50.960/50.191–50.878ms;proxy 与 noaccept 逐格比对恰 6 格翻转——与报告逐项吻合。缺口见 anomalies(rollout §5 三项读数无落盘出处且与其自身引用的 raw 冲突);四条被引 negatives 的 scope 仍是已删除的旧端口拓扑,故 reuse 判 inconclusive。",
+  "created_at": 1791855819412,
+  "evaluator": "independent"
+}

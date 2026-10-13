@@ -1,0 +1,10 @@
+{
+  "basis": "旧栈 15006 端口,接管后由 rms 的 quay.io 监听器顶替",
+  "id": "pb_15006",
+  "label": "15006 端口绑定(quay.io)",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml listeners"
+  },
+  "type": "ns_port_binding"
+}

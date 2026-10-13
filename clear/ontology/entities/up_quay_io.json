@@ -1,0 +1,10 @@
+{
+  "basis": "实测 401、3.4s",
+  "id": "up_quay_io",
+  "label": "https://quay.io",
+  "provenance": {
+    "kind": "named",
+    "ref": "curl https://quay.io/v2/"
+  },
+  "type": "upstream"
+}

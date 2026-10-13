@@ -1,0 +1,36 @@
+{
+  "id": "l-hi6ugr",
+  "goal": "g-mv5eqq0n96w2",
+  "text": "2xx 不等于「这就是我要的东西」：探测/预检一个内容端点时，要按最终响应的媒体类型确认它像被探的对象（manifest 为 JSON 系、blob 非 HTML）；缺失/不可解析的媒体类型应当接受（宁可漏挡，不可把可服务的 namespace 误杀）。",
+  "kind": "trap",
+  "about": [
+    "selection_probe",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "evidence": "dhi 镜像对某些仓库路径 302 → github.com/DaoCloud/public-image-mirror（HTML 200），探针跟随后把落地页当成 manifest 存在并赢下选仓；而 registry.k8s.io 是 307 → pkg.dev → 200 manifest media type。",
+  "boundary": "需要跟随重定向的场景（如 registry.k8s.io 的 307）靠它才能正确，所以不能用「不跟随」来解决。",
+  "scope_spec": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "basis": "probe.go:505-536 按最终响应媒体类型判定并容忍缺失；TestARedirectToAWebPageIsNotAManifest、TestHTMLWith200IsNotAManifest 通过，dhi.io 的 302→HTML 落页在交付态抓取中记为 absent:not-manifest-content:text/html。",
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "active",
+  "at": 1791865480019
+}

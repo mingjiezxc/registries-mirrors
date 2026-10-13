@@ -1,0 +1,10 @@
+{
+  "basis": "实测 401、3.7s",
+  "id": "up_registry_k8s_io",
+  "label": "https://registry.k8s.io",
+  "provenance": {
+    "kind": "named",
+    "ref": "curl https://registry.k8s.io/v2/"
+  },
+  "type": "upstream"
+}

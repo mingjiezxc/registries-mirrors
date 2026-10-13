@@ -1,0 +1,32 @@
+{
+  "id": "n-u-e1im6x",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "改动后复测时,rms 侧出现一条 HEAD manifests 404(docker 探测某个 manifest 时),而整个 pull 仍然成功。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "host_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-e1im6x",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791812508569,
+  "updated": 1791812508569
+}

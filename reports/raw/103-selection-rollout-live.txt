@@ -1,0 +1,21 @@
+# 103 现场原始抓取（2026-10-13T09:13:42+08:00）· 只读，每项重复 3 次
+## A. 已缓存镜像 GET /v2/alpine/manifests/latest
+  rep1 http=200 t=1.070060s
+  rep2 http=200 t=1.335283s
+  rep3 http=200 t=1.084366s
+## B. 无仓库名的 blob GET /v2/blobs/sha256:83b2b670…（affinity）
+  rep1 http=200 t=0.003546s
+  rep2 http=200 t=0.001584s
+  rep3 http=200 t=0.001836s
+## C. 另一个镜像 GET /v2/hello-world/manifests/latest
+  rep1 http=200 t=1.211936s
+  rep2 http=200 t=1.780211s
+  rep3 http=200 t=1.373820s
+## D. 拼错的镜像名（未命中缓存，走探测）
+  rep1 http=404 t=7.467220s
+  rep2 http=404 t=2.492894s
+  rep3 http=404 t=3.580054s
+## E. 端口与就绪
+rms 0.0.0.0:5000->5000/tcp, :::5000->5000/tcp, 0.0.0.0:9100->9100/tcp, :::9100->9100/tcp, 5001-5002/tcp
+  :5000/v2/ http=401
+  readyz=ready

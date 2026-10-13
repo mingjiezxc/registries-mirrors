@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-1f4c6863d9b07993ce6907ac4fb22340-u4",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "任务书列的账本证据 e-gqu8jh/e-vjvdf4/e-qytva3/e-f44dno（refute）与 e-d23908/e-1qjwh9（inconclusive）在交付物里只以文字出现、没有正文，无法核对各自推翻/存疑的是哪条观测；账本里 n-u-i6k3wz.json:39 仍写「24 格里只有 2 格翻转」（逐格复算为 72 格中 6 格），据称的更正正文不在工作区。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "与先前多次登记同源：账本里六条 evidence（`e-gqu8jh`、`e-vjvdf4`、`e-qytva3`、`e-f44dno` 为 refute；`e-d23908`、`e-1qjwh9` 为 inconclusive）在工作区与副本里都读不到正文，我无法判断它们各自推翻/存疑的是哪条观测，也无法在本轮检验掉。影响：若其中任何一条针对本次判断的某条观测，需要账本持有者提供内容后重验（本轮四条已由独立评估者复跑门禁、真实上游探针与 103 现场后判为成立）。已同时写入答案的「尚未确定的事项」。交给人。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:1f4c6863d9b07993ce6907ac4fb22340#u4",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791865097954,
+  "updated": 1791865128319
+}

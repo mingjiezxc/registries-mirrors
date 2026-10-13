@@ -1,0 +1,187 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "39cecacb-4183-46bb-9063-eae550aa64f9",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:67 用它支撑「删端口不破主流程」，机制（/v2/ 401 挑战）我在 103 现场仍实测到（:5000/v2/ 401 + Basic realm=\"rms\"）；但该条 scope 写「端口 5000/15000-15006/9100」「registry-mirrors 指向 103:15000-15006」（x-h-nccqnt.json:20/:23），正是本次删掉的拓扑，系统亦判 out_of_scope（goal:17）——本次范围内适用性未建立。"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:70 引用；它说的「只看 /v2/ 探活会漏掉取内容失败」确是本次改仓库级探测的针对对象，本次也复现了「探活正常≠有内容」的情形，但该条 scope 同为旧端口拓扑、系统判 out_of_scope（goal:27），不足以判整条适用。"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "inconclusive",
+      "basis": "报告 §三:69 用它支撑「不可达只留给传输失败」；我从 .probe/selection/raw-direct.jsonl 复算确有超时/重置类 unreachable 读数（12 组里 7 格），与该条机制同向，但 scope 是旧拓扑、系统判 out_of_scope（goal:22），适用性未建立。"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "inconclusive",
+      "basis": "它只被登记为 h-0afup5 的 uses（goal:22）并被判 out_of_scope，报告正文未引用；它讲的是上游带宽/并发争用导致层下载变慢，与本次并发探测墙钟读数不同坐标，无法据此判适用。"
+    }
+  ],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "报告 §三:64-65 与多条排除理由（如 n-audit-pending-a72c74b22d100285f50ae98cf762186a-u3.json:32）称已按系统更正机制写入两份更正文档（Hindsight: Correction…），但全库检索只命中记载该 claim 的条目；我查 103:18888 的 Hindsight，项目 bank `coding-agent::registries-mirrors` 的 /documents 与 /memories 均为 0、从未写入（全部 bank 最近写入停在 2026-10-10）。x-h-nccqnt.json:20/:23 的 scope 仍写 15000–15006，四个 uses 仍被判 out_of_scope。",
+      "matters": "unclear"
+    },
+    {
+      "what": "任务书坐标里 evidence `e-gqu8jh`（verdict=refute）在工作区与本步副本中检索均无命中，只命中记录该疑问的 negative JSON，无法核对它推翻的是哪条观测、是否已解决。",
+      "matters": "unclear"
+    },
+    {
+      "what": "仓库根 docker-compose.yml:35-36 与 .env.example:16-17 仍声明按 namespace 绑定的端口 5001/5002，101 上运行的 rms 容器实测发布 0.0.0.0:5000-5002；与目标主张「同时移除按 namespace 绑定的独立端口」不一致（判据③只枚举 15000–15006 与 deploy/103，故不影响本裁决）。",
+      "matters": "no"
+    },
+    {
+      "what": "internal/selection/probe.go:286-289 把 manifest 路径上除 401/405/501 外的任何状态（含 5xx）判为「明确不存在」absent，而 reports/103-selection-rollout.md:87 与 probe.go:240 的口径是「只有传输层失败才算不可达」；无单测覆盖 manifest 的 5xx，做的人未登记这处边界。",
+      "matters": "unclear"
+    },
+    {
+      "what": "reports/raw/103-child-manifest-and-blob.txt:1-3 未记录请求头；我按同一 URL 不带 Accept 复现得 404 MANIFEST_UNKNOWN（响应体 `OCI manifest found, but accept header does not support OCI manifests`），带 OCI Accept 才得 200/1022 字节——raw 读数可复现，但复现条件只写在报告第八节。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "记录确有此事：103 上线后拼错镜像名返 503、决策日志显示 gcr.io/ghcr.io/quay.io 判 unreachable（103-selection-rollout.md:84），改为「认证流程走完的 401/403/404 算明确不存在、只有传输层失败算不可达」后复验 404（probe.go:262/272 的 errAuthRefused 分支）；我现场重取拼错镜像名仍 404 @3.67s。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我从 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算得恰 6 格翻转（ghcr.io 的 astral-sh/uv、gcr.io 的 distroless/static × 各 3 轮 200→404），其余 66 格一致；probe.go:56 的 manifestAccept 覆盖四种 media type，回归用例通过（selection-unit-and-config.txt:6-7）。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "我复跑 e2e TestUnqualifiedBlobFollowsTheManifest PASS；103 现场 GET /v2/blobs/sha256:83b2b670…（路径无仓库名）三次均 200、581 字节，决策日志 source=affinity 且带 repo=library/alpine；dispatch.go 的 blobEnginePath 被首取与重试共用。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "单测 TestDecideDistinguishesNotFoundFromUnreachable 的「一个答 404 + 一个不可达 ⇒ ErrNotFound」与「谁都没答 ⇒ ErrUnreachable」在我复跑中 PASS，e2e TestUnqualifiedAllUnreachable 得 503 UNAVAILABLE，103 现场拼错镜像名 404 NAME_UNKNOWN。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "本次多轮返工确实集中在产物读数与落盘原文对不上（0.12ms vs 0.152ms、2 格 vs 6 格、ERR 组别、无出处日志）；修正后我在 raw jsonl 上复算得 stats 行（spread 中位 0.152/0.145ms、压缩比 3.53x/3.80x、start_offset 50.164–50.960/50.191–50.878）与报告逐字一致，恰说明「给出可重跑复算」这条做法的价值。"
+    }
+  ],
+  "basis": "六条已登记判据逐条满足，且都以硬信号独立复核：①internal/selection 并发 HEAD 探测只认 2xx、取实测最快、按 probe_ttl 缓存（probe.go:255/286、chooser.go:158），单测在我自建副本复跑全绿（并发时间差 14µs＜50ms 阈值 chooser_test.go:481；200ms 慢候选被 741µs 者击败；token 重试=1 票 2 HEAD；TTL 与两种错误语义各有用例）。②Namespaces 已无 default、Config 已无 listeners（config.go:153）；我用副本新二进制复跑严格解码，报错与 raw 逐字一致（`field default not found in type config.Namespaces`、`field listeners not found in type config.Config`）；selection 接线 app.go:97，404/503 映射与 GET/HEAD 只重选一次见 dispatch.go:380/387/461，并有 dispatch_test 钉住。③deploy/103 三件套与 config/ 全无 15000–15006，103 在线 compose 只发布 5000/9100。④三条 e2e 用例俱在且复跑 PASS。⑤make check、go vet -tags e2e、-race selection/server、e2e（顶层 10 RUN=9 PASS+1 SKIP、18 子测试、0 FAIL）全绿。⑥报告五要件齐，我在 103 现场重取全部复现：15000–15006 全 refused、:5000/v2/ 401 Basic realm=\"rms\"、已缓存拉取 200 且决策日志 source=cache/decision-cache、拼错镜像名 404 NAME_UNKNOWN（3.67s、五候选逐项耗时）、/v2/blobs/uploads/&lt;id&gt; 503 UNAVAILABLE、无仓库名 blob 581 字节、运行镜像 b2a9c2b846ca 与报告一致。转写复核通过：stats 摘要、start_offset 范围、6 格 Accept 翻转、:158/:199 组别归属均由我从 raw/jsonl 复算一致。四条判断的推翻条件本轮均未触发（无 200/5xx、无名不符、启动与 login/push/catalog/readyz 全绿）。注意：判据⑥的 503 来自「既无仓库名也无 digest」分支，全不可达→503 只有 e2e 覆盖；goals 投影文件里的判据措辞与任务书登记的六条不完全相同。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 255
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 286
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 481
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 380
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 461
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 796
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 648
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 695
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 709
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 13
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 46
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 58
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 40
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 51
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 66
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 31
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 3
+    },
+    {
+      "path": "docker-compose.yml",
+      "line": 35
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    }
+  ],
+  "card": "六条已登记判据逐条满足，且都以硬信号独立复核：①internal/selection 并发 HEAD 探测只认 2xx、取实测最快、按 probe_ttl 缓存（probe.go:255/286、chooser.go:158），单测在我自建副本复跑全绿（并发时间差 14µs＜50ms 阈值 chooser_test.go:481；200ms 慢候选被 741µs 者击败；token 重试=1 票 2 HEAD；TTL 与两种错误语义各有用例）。②Namespaces 已无 default、Config 已无 listeners（config.go:153）；我用副本新二进制复跑严格解码，报错与 raw 逐字一致（`field default not found in type config.Namespaces`、`field listeners not found in type config.Config`）；selection 接线 app.go:97，404/503 映射与 GET/HEAD 只重选一次见 dispatch.go:380/387/461，并有 dispatch_test 钉住。③deploy/103 三件套与 config/ 全无 15000–15006，103 在线 compose 只发布 5000/9100。④三条 e2e 用例俱在且复跑 PASS。⑤make check、go vet -tags e2e、-race selection/server、e2e（顶层 10 RUN=9 PASS+1 SKIP、18 子测试、0 FAIL）全绿。⑥报告五要件齐，我在 103 现场重取全部复现：15000–15006 全 refused、:5000/v2/ 401 Basic realm=\"rms\"、已缓存拉取 200 且决策日志 source=cache/decision-cache、拼错镜像名 404 NAME_UNKNOWN（3.67s、五候选逐项耗时）、/v2/blobs/uploads/&lt;id&gt; 503 UNAVAILABLE、无仓库名 blob 581 字节、运行镜像 b2a9c2b846ca 与报告一致。转写复核通过：stats 摘要、start_offset 范围、6 格 Accept 翻转、:158/:199 组别归属均由我从 raw/jsonl 复算一致。四条判断的推翻条件本轮均未触发（无 200/5xx、无名不符、启动与 login/push/catalog/readyz 全绿）。注意：判据⑥的 503 来自「既无仓库名也无 digest」分支，全不可达→503 只有 e2e 覆盖；goals 投影文件里的判据措辞与任务书登记的六条不完全相同。",
+  "created_at": 1791856433953,
+  "evaluator": "independent"
+}

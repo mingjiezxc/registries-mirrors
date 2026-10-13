@@ -1,0 +1,10 @@
+{
+  "basis": "代理 namespace 之一,对应 /data/docker.io",
+  "id": "ns_docker_io",
+  "label": "docker.io namespace",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml"
+  },
+  "type": "namespace"
+}

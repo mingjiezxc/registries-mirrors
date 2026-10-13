@@ -1,0 +1,10 @@
+{
+  "basis": "server.listen 与 deploy/103 docker-compose 的 5000 映射",
+  "id": "pb_primary_5000",
+  "label": "主端点 5000（多 namespace，无限定请求入口）",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/docker-compose.yml"
+  },
+  "type": "ns_port_binding"
+}

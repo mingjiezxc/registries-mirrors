@@ -1,0 +1,248 @@
+{
+  "id": "f-udxt0n",
+  "goal": "g-mv5eqq0n96w2",
+  "hypothesis": "h-gacxr2",
+  "text": "无限定请求可以只靠并发探测各候选 namespace 上游的 /v2/<repo>/manifests/<ref>、只接受 2xx 并取最快者来选定服务方，无需 namespaces.default。",
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "sd_pick_fastest",
+    "selection_decision",
+    "r_decision_selects_namespace",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103"
+  ],
+  "scope": "条件 上游=docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io、主机=192.168.188.103、出网=局域网代理 192.168.188.1:3128、客户端=docker/containerd 直连 103、部署方式=docker compose + 单个主端点 :5000",
+  "scope_spec": {
+    "conditions": {
+      "上游": "docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "refute_when": "任一候选上游可用而探测失败/超时，或出现「有镜像的 namespace 未被选中」的情况（例如 token 流程不通、探测判据把 404 与错误混淆）。",
+  "level": "L3",
+  "evidence": [
+    "e-zwjsdc",
+    "e-2k26ka"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-zwjsdc",
+      "step": "s2",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "唯一推翻条件是「任一候选上游可用而探测失败/超时，或出现有镜像的 namespace 未被选中」。单测里 A 有镜 B 没有→选 A；两个都有时选更快者（292µs 击败 200ms 延迟者）；真实上游实测 6 个候选各 3/3 轮在 native 组判 exists、在 native-absent 组判 absent，且 401→token→200 的流程被单独断言。未命中推翻条件。",
+      "refs": [
+        "internal/selection/probe.go",
+        "internal/selection/chooser_test.go",
+        "internal/registry/manager.go",
+        "reports/raw/selection-real-upstream.txt",
+        "reports/raw/selection-notes.md",
+        "internal/upstream/selector.go",
+        "./internal/selection/"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "internal/selection/probe.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/selection/chooser_test.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/registry/manager.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-real-upstream.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-notes.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/upstream/selector.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "./internal/selection/",
+          "from_basis": true
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791848153077
+    },
+    {
+      "id": "e-2k26ka",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "native 组 6 候选 × 3 轮全 2xx（.probe/selection/raw-proxy.jsonl 与 raw-direct.jsonl 逐格复算），native-absent 组全 absent；proxy shared 组 library/alpine 上 docker.1ms.run 与 registry-1.docker.io 3/3 轮 200 而 ghcr/gcr/quay 401、registry.k8s.io 404——「存在但慢」与「不存在」被正确区分；e2e TestUnqualifiedPicksNamespaceWithContent 断言两个 namespace 都真被探测过且显式 namespace 路径不触发探测；未出现有镜像的 namespace 未被选中。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true,
+      "at": 0
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-2k26ka",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "native 组 6 候选 × 3 轮全 2xx（.probe/selection/raw-proxy.jsonl 与 raw-direct.jsonl 逐格复算），native-absent 组全 absent；proxy shared 组 library/alpine 上 docker.1ms.run 与 registry-1.docker.io 3/3 轮 200 而 ghcr/gcr/quay 401、registry.k8s.io 404——「存在但慢」与「不存在」被正确区分；e2e TestUnqualifiedPicksNamespaceWithContent 断言两个 namespace 都真被探测过且显式 namespace 路径不触发探测；未出现有镜像的 namespace 未被选中。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "id": "svc_rms_103",
+        "kind": "instance",
+        "result": "winner",
+        "type": "namespace_candidate",
+        "value": "svc_rms_103"
+      },
+      "predicate": "r_decision_selects_namespace",
+      "subject": {
+        "id": "sd_pick_fastest",
+        "type": "selection_decision"
+      }
+    }
+  ],
+  "definitions": {
+    "r_decision_selects_namespace": "fnv:ea960bc8",
+    "selection_decision": "fnv:7d235706",
+    "namespace_candidate": "fnv:ab43cf0f",
+    "host": "fnv:c9be710b",
+    "namespace": "fnv:206e9ab1",
+    "service": "fnv:90e8622b",
+    "unqualified_request": "fnv:bc2ac45f"
+  },
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "established",
+  "review": null,
+  "at": 1791854398307,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791854398307,
+      "level": "L3"
+    }
+  ]
+}

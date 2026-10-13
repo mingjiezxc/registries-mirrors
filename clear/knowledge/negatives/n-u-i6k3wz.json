@@ -1,0 +1,51 @@
+{
+  "id": "n-u-i6k3wz",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "预测 ghcr.io/gcr.io/quay.io 对「不存在的仓库」会明确回 404（于是能被判成「不存在」），实际对 library/alpine 这类 Docker Hub 名字一律回 401，且探针程序对 ghcr/gcr 根本没走 token 流程、quay.io 标了 T 仍是 401。若把这种 401 直接当成「不存在」，上游认证一有问题就会把真实存在的镜像判成不存在；若当成「不可达」，混合场景下请求会从 404 变成 503。这一条直接决定 404 与 503 的边界，尚未定论。",
+  "touches": [
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "sel-outcome"
+  ],
+  "evidence": [],
+  "about": [
+    "svc_rms_sel",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "sel-outcome",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "已查清并落到实现里：这些 401 是**认证判决**而非内容协商造成的假 absent——docs-dev 用同一个探针加 -noaccept 背靠背跑第二遍，24 格里只有 ghcr.io/gcr.io 的**原生仓库**那 2 格翻转（200→404），`library/alpine` 的每一格两遍一致；根因是 ghcr.io/gcr.io 的匿名 token 端点回 403、quay.io 拿到票后 manifest 仍 401（reports/raw/selection-real-upstream.txt §一.6、§8）。据此实现把「认证流程走完后的 401/403/404」判为「明确不存在」，只有真正的传输层失败才算不可达（internal/selection/probe.go 的 errAuthRefused 分类、internal/selection/chooser.go 的 ErrNotFound/ErrUnreachable 文档），并有单测与端到端两层回归；103 现场复验拼错的镜像名回到 404 NAME_UNKNOWN。",
+    "by": "selection_outcome"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "u-i6k3wz",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791819818873,
+  "updated": 1791862477394
+}

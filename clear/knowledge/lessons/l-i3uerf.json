@@ -1,0 +1,36 @@
+{
+  "id": "l-i3uerf",
+  "goal": "g-mv5eqq0n96w2",
+  "text": "多候选选仓时，「有候选说不清」不应吞掉「另一个候选明确说不存在」：至少一个候选给了明确答复就返回 404，只有谁都没答上话才 503——503 会让客户端永久重试一个根本不存在的镜像。",
+  "kind": "prior",
+  "about": [
+    "selection_probe_ttl",
+    "unqualified_request",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io"
+  ],
+  "evidence": "四行候选组合实测与 103 上拼错镜像名拿到 503 的现场；改为「无人答才 503」后复验为 404。",
+  "boundary": "当某个候选此刻恰好不可达、而它正好持有该内容时，这条规则会给出 404。",
+  "scope_spec": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "basis": "pick 只在无任何候选给出答复时回 ErrUnreachable（probe.go:714-731），TestAFailingCandidateStillLosesToAnAnswer 与 TestDecideMistypedImageSurvivesOneNamespaceDown 通过，103 拼错镜像名复得 404 NAME_UNKNOWN。",
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "active",
+  "at": 1791865480019
+}

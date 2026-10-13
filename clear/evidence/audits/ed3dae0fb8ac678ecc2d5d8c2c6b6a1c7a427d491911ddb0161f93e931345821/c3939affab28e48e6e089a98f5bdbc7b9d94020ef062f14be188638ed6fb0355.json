@@ -1,0 +1,275 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "ce99adf4-d94c-48aa-afb2-894d7a40a302",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "refute",
+      "basis": "clear/knowledge/negatives/x-h-nccqnt.json:4 状态是 preliminary_excluded，:20/:23 的 scope 写「端口 5000/15000-15006/9100」「registry-mirrors 指向 103:15000-15006」，system 判 out_of_scope；报告 :67 只作背景一致性引用，不能按原 scope 直接采用"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "refute",
+      "basis": "该条 scope（端口 5000/15000-15006/9100）仍是旧拓扑、系统判 out_of_scope；其机制（只看 /v2/ 探活会漏掉取内容失败）在本次 daocloud 实测中仍可观察，但条目本身范围不适用于现行单端点部署"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "refute",
+      "basis": "同上：clear/knowledge/negatives/n-u-iiyp8u.json 的 scope 写旧端口清单，系统判 out_of_scope；direct 组传输失败读数与之相符，但该条不能按原范围直接采用"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "refute",
+      "basis": "该条 scope 同样写 5000/15000-15006/9100 旧拓扑，系统判 out_of_scope；带宽争用的机制在本次未复测，范围也不覆盖现行部署"
+    }
+  ],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:60-64 与多条排除理由称两份 Hindsight「Correction」文档已写入（doc_id 由 hindsight_ingest_document 返回）。我查 103:18888 记忆服务：bank coding-agent::registries-mirrors 的 fact_count=0、last_write_at=null、/documents total=0（全部 bank 最近写入停在 2026-10-10）。该更正不存在，账本里 clear/knowledge/negatives/x-h-nccqnt.json:20、:23 的旧端口 scope 与 n-u-i6k3wz.json:38 的「2 格」都仍未更正。",
+      "matters": "yes"
+    },
+    {
+      "what": "clear/knowledge/negatives/n-u-i6k3wz.json:38 的排除理由仍写「24 格里只有 ghcr.io/gcr.io 的原生仓库那 2 格翻转」；我按 .probe/selection/raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算为 72 格中 6 格翻转（ghcr.io、gcr.io × native × 3 轮，两遍共 144 观测），与 reports/raw/selection-real-upstream.txt:112-114 的 6 格一致。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/raw/103-daocloud-namespaces-verify.txt:17 的小节标题写「无限定请求现在的候选数（应为 10）」，紧随的 :18 决策日志却是 candidates=5（candidates=10 只出现在同文件 :40）；该文件正是结论 q2 与上线记录 :133 引用「candidates=10」的出处。",
+      "matters": "no"
+    },
+    {
+      "what": "结论依赖的既有条目未全部走适用性判定：reports/103-selection-rollout.md:125 用 negatives n-u-fl1myg、n-u-l29jwy 决定 docker.io 上游顺序，而四条判断的 uses 只有 x-h-nccqnt、n-u-s01do2、n-u-iiyp8u、n-u-l136s0，且全被判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32；这些条目 scope 仍写端口 5000/15000-15006）。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "internal/selection/probe.go:386-410 三分类（2xx=存在 / 401·403·404 等=明确不存在 / 5xx·429·传输失败=没答），单测 TestServerErrorsAreNotAbsence 与 TestAuthenticatedRefusalIsAbsence 通过，103 拼错镜像名现场复跑得 404 NAME_UNKNOWN（我实测 4.36s）"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "reports/raw/103-final-live-10ns.txt:24 决策日志 dhi.io=813.528ms(absent:not-manifest-content:text/html)；测试 TestARedirectToAWebPageIsNotAManifest / TestHTMLWith200IsNotAManifest / TestARealManifestMediaTypeStillCounts 在我复跑中通过；媒体类型缺失时接受的口径写在 probe.go 的 looksLikeContent"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "probe.go 有 DecideBlobInRepo，测试 TestDecideBlobInRepoAsksTheBlobPath 断言上游收到的路径；真机 reports/raw/103-child-manifest-and-blob.txt:23-28 显示 /v2/library/busybox/blobs/<digest> 三次 200（各 2206402 字节），而修复前该路径 404（reports/103-selection-rollout.md:89-93）"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "测试 TestDecideDistinguishesNotFoundFromUnreachable 的「one candidate answers 404 and one is unreachable」断言 ErrNotFound（我复跑通过），103 现场拼错镜像名复跑得 404 而非 503，依据与代价写在 reports/103-selection-rollout.md:145-148"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "reports/raw/daocloud-mirrors-probe.txt 显示九个 daocloud 镜像 /v2/ 0.17–0.21s 回 401（探活正常），而 reports/raw/103-daocloud-namespaces-verify.txt:15 记同一镜像的一个 20MB layer 取用实测 110.5s；结论与 negatives n-u-s01do2/n-u-fl1myg 一致，ordered upstream 排序据此把 daocloud 放次位（reports/103-selection-rollout.md:125）"
+    }
+  ],
+  "basis": "六条判据的实质内容都能独立复核成立：在副本里 make check EXIT=0、go test -race ./internal/selection/ 与 ./internal/server/ 无竞争、go test -tags e2e 顶层 11 RUN（10 PASS + 1 SKIP，0 FAIL）；严格解码旧键分别报 field default / field listeners 不存在；并发用例 skew 复跑 15µs（阈值 50ms）；读码确认并发 HEAD /v2/&lt;repo&gt;/manifests/&lt;ref&gt;、只认 2xx、取最快、probe_ttl 缓存、token 重试、ErrNotFound/ErrUnreachable 两类语义、GET/HEAD 只重选一次、404 NAME_UNKNOWN 与 503 UNAVAILABLE 映射；全仓 1500[0-6] 只剩 deploy/103/README.md 的迁移说明；103 现场实测 10 个 namespace 全 up、只发布 5000/9100、15000–15006 与 5001/5002 全部拒连、:5000/v2/ 401、已缓存无限定 manifest 200/9218 字节、拼错镜像名 404 NAME_UNKNOWN、/v2/blobs/uploads/abc-123 的 503 包络逐字一致。但判据⑥交付物内仍有与记录不符的内容：一处不存在的出处、一处已过期的「现役镜像/候选数」标注，且报告称已写入的记忆库更正查证不存在。",
+  "shortfalls": [
+    {
+      "criterion": "⑥ 103 证据出处（404 blob 行）",
+      "what": "reports/103-selection-rollout.md:61 称不存在的 digest sha256:000…0「三次均 → 404」，并称 source=affinity 的完整决策行见 reports/raw/103-selection-503-and-logs.txt：该文件 grep affinity = 0 处；同一 URL 的同类原始行在 reports/raw/103-mirror-pull-and-affinity.txt:9-11 记的是 503 UNAVAILABLE + source=none（该节标题却自称「affinity 决策完整行」，:8）；404 读数只在 reports/raw/103-child-manifest-and-blob.txt:30-31，1 次、无次数与耗时。",
+      "missing": "该断言的正确出处或删除；「三次」需有原始抓取，或注明只有一次 404 观测、且无亲和时同一路径是 503"
+    },
+    {
+      "criterion": "⑥ 交付态标注（现役镜像/候选数）",
+      "what": "reports/103-selection-rollout.md:37、:75 与 reports/selection-verification.md:73 把 062d62246c1b 标为「现役」、验收读数全用 5 候选抓取；最新原始抓取 reports/raw/103-final-live-10ns.txt:1-3 是镜像 9d528ac26182、10 个 proxy namespace；我在 103 现场实测（:9100 十条 rms_namespace_up 全为 1、:5000/v2/=401、15000–15006 与 5001/5002 全 000、缓存 manifest 200/9218 字节）与 10ns 一致，与报告表不一致。",
+      "missing": "报告里把「现役镜像」与判据⑥的原始抓取指针更新到 10ns 抓取（或标明哪份才是交付态、哪份是增配前）"
+    },
+    {
+      "criterion": "⑥ 503 包络（配合判据④「全不可达→503」）",
+      "what": "103 上唯一的 503 观测是 /v2/blobs/uploads/abc-123（reports/raw/103-final-live-10ns.txt:39-40；我在 103 复跑得到逐字相同的 body），触发原因是「路径既无仓库名也无 digest」；clear/goals/plans/p-mv5ewcefwt9a.md:23 第 6 步要的是「候选全不可达场景返回 503」，该分支在 103 无原始观测，只在 test/e2e/e2e_test.go:822 有覆盖。",
+      "missing": "103 上「所有候选上游不可达 → UNAVAILABLE」的一次现场观测（或说明判据⑥的 503 指的是另一条分支）"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 61
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 37
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 41
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 44
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 52
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 63
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 75
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 101
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 125
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 34
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 46
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 60
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 73
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 91
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 36
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 3
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 24
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 39
+    },
+    {
+      "path": "reports/raw/103-mirror-pull-and-affinity.txt",
+      "line": 8
+    },
+    {
+      "path": "reports/raw/103-child-manifest-and-blob.txt",
+      "line": 30
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 9
+    },
+    {
+      "path": "reports/raw/103-daocloud-namespaces-verify.txt",
+      "line": 17
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 158
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 353
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 395
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 39
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 514
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1311
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 14
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 499
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 33
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/goals/plans/p-mv5ewcefwt9a.md",
+      "line": 23
+    },
+    {
+      "path": "clear/knowledge/negatives/n-u-i6k3wz.json",
+      "line": 38
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    }
+  ],
+  "card": "六条判据的实质内容都能独立复核成立：在副本里 make check EXIT=0、go test -race ./internal/selection/ 与 ./internal/server/ 无竞争、go test -tags e2e 顶层 11 RUN（10 PASS + 1 SKIP，0 FAIL）；严格解码旧键分别报 field default / field listeners 不存在；并发用例 skew 复跑 15µs（阈值 50ms）；读码确认并发 HEAD /v2/&lt;repo&gt;/manifests/&lt;ref&gt;、只认 2xx、取最快、probe_ttl 缓存、token 重试、ErrNotFound/ErrUnreachable 两类语义、GET/HEAD 只重选一次、404 NAME_UNKNOWN 与 503 UNAVAILABLE 映射；全仓 1500[0-6] 只剩 deploy/103/README.md 的迁移说明；103 现场实测 10 个 namespace 全 up、只发布 5000/9100、15000–15006 与 5001/5002 全部拒连、:5000/v2/ 401、已缓存无限定 manifest 200/9218 字节、拼错镜像名 404 NAME_UNKNOWN、/v2/blobs/uploads/abc-123 的 503 包络逐字一致。但判据⑥交付物内仍有与记录不符的内容：一处不存在的出处、一处已过期的「现役镜像/候选数」标注，且报告称已写入的记忆库更正查证不存在。",
+  "created_at": 1791862431038,
+  "evaluator": "independent"
+}

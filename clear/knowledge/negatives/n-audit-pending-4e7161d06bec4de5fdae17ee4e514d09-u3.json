@@ -1,0 +1,32 @@
+{
+  "id": "n-audit-pending-4e7161d06bec4de5fdae17ee4e514d09-u3",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "clear/knowledge/negatives/x-h-nccqnt.json 已把 h-nccqnt 标为 preliminary_excluded,附 L2 自评证据 e-w9gfyi(「整次拉取前后 rms 请求指标无差异、日志 108→108 行」);本步重验该判断后,四条判断的 uses 仍全为空(clear/goals/g-mv59mcuvcjiz.md:12,17,22,27),没有引用这条已有条目做适用性判定。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "host_103",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "audit:pending:4e7161d06bec4de5fdae17ee4e514d09#u3",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791816767889,
+  "updated": 1791816767889
+}

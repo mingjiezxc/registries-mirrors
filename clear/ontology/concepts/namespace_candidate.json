@@ -1,0 +1,6 @@
+{
+  "gloss": "参与并发选择的 proxy namespace：其引擎能读（stateProxy 或 stateCacheOnly），并有一个当前当选的上游 URL。",
+  "id": "namespace_candidate",
+  "kind": "category",
+  "label": "候选 namespace"
+}

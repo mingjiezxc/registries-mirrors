@@ -1,0 +1,58 @@
+# 103 现役镜像（062d62246c1b）现场抓取（2026-10-13T10:24:10+08:00）——本文件是报告引用的唯一来源
+## 0. 现役镜像
+  image=sha256:062d62246c1b0640333b949c37c5061a524ef57428cb395116dc4c5b846ce2c3
+ports=0.0.0.0:5000->5000/tcp, :::5000->5000/tcp, 0.0.0.0:9100->9100/tcp, :::9100->9100/tcp, 5001-5002/tcp
+
+## 1. 拼错的镜像名（未命中缓存）三次 -> 期望 404 NAME_UNKNOWN
+  rep1 http=404 t=6.580664s
+  rep2 http=404 t=4.019788s
+  rep3 http=404 t=2.699222s
+  响应体原文：
+    {"errors":[{"code":"NAME_UNKNOWN","message":"repository library/definitely-not-here-rms:latest is not available in any configured namespace","detail":null}]}
+
+## 2. 该请求的 selection 决策日志（完整行，含 kind）
+  {"time":"2026-10-13T02:24:17.322057487Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","kind":"manifest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=4.105094s(absent)","gcr.io=6.579239s(absent)","ghcr.io=1.739119s(absent)","quay.io=808.733ms(absent)","registry.k8s.io=504.281ms(absent)"]}
+  {"time":"2026-10-13T02:24:21.350789355Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","kind":"manifest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=4.01857s(absent)","gcr.io=1.898911s(absent)","ghcr.io=1.745391s(absent)","quay.io=815.536ms(absent)","registry.k8s.io=500.701ms(absent)"]}
+  {"time":"2026-10-13T02:24:24.060076202Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","kind":"manifest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=2.580712s(absent)","gcr.io=2.698011s(absent)","ghcr.io=1.754895s(absent)","quay.io=831.121ms(absent)","registry.k8s.io=526.799ms(absent)"]}
+
+## 3. 已缓存镜像（无限定）三次 -> 期望 200
+  rep1 http=200 t=1.059527s bytes=9218
+  rep2 http=200 t=1.121578s bytes=9218
+  rep3 http=200 t=1.049081s bytes=9218
+  对应决策日志（完整行）：
+  {"time":"2026-10-13T02:24:25.160889375Z","level":"INFO","msg":"selection","repo":"alpine","ref":"latest","kind":"manifest","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+  {"time":"2026-10-13T02:24:26.29213142Z","level":"INFO","msg":"selection","repo":"alpine","ref":"latest","kind":"manifest","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+
+## 4. 带仓库名的 blob 三次 -> 期望 200（冷/热）
+  rep1 http=200 t=5.652257s bytes=2206402
+  rep2 http=200 t=0.004578s bytes=2206402
+  rep3 http=200 t=0.005252s bytes=2206402
+  对应决策日志（完整行，kind=blob）：
+  {"time":"2026-10-13T02:24:33.034211376Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+  {"time":"2026-10-13T02:24:33.046991396Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+
+## 5. 无仓库名的 blob（亲和路径）一次 + 其决策日志
+  http=200 t=0.004388s bytes=581
+  {"time":"2026-10-13T02:24:33.081666619Z","level":"INFO","msg":"selection","digest":"sha256:83b2b6703a620bf2e001ab57f7adc414d891787b3c59859b1b62909e48dd2242","winner":"docker.io","repo":"library/alpine","source":"affinity"}
+
+## 6. 无法判定归属的上传会话路径 -> 期望 503 UNAVAILABLE
+  HTTP/1.1 503 Service Unavailable
+  Content-Type: application/json; charset=utf-8
+  Docker-Distribution-Api-Version: registry/2.0
+  Date: Tue, 13 Oct 2026 02:24:33 GMT
+  Content-Length: 183
+  
+
+## 7. 端口与就绪
+  :15000 http=000
+connection refused
+  :15003 http=000
+connection refused
+  :15006 http=000
+connection refused
+  :5000/v2/ http=401
+  readyz=ready
+  rms_namespace_up{namespace="docker.io"} 1 rms_namespace_up{namespace="gcr.io"} 1 rms_namespace_up{namespace="ghcr.io"} 1 rms_namespace_up{namespace="quay.io"} 1 rms_namespace_up{namespace="registry.k8s.io"} 1 
+
+## 6b. 上面的 503 响应体
+  {"errors":[{"code":"UNAVAILABLE","message":"cannot determine which namespace serves /v2/blobs/uploads/abc-123: the path names neither a repository nor a blob digest","detail":null}]}

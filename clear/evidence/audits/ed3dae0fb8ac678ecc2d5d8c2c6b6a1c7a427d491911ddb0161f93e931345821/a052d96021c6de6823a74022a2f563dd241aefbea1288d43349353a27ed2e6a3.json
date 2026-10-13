@@ -1,0 +1,238 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "d811dfb3-6132-4a04-a20c-8afe7ee51c49",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:37 称其 §一 代码块「逐字取自 reports/raw/selection-gate-check.txt」，但报告 :26 写 `ok ... internal/server (cached)`，该 raw :16 实为 `ok ... internal/server 0.420s`；全库没有任何 raw 含 `internal/server (cached)`。做的人未登记这处不符。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:52 写「有落盘出处的 4 次测量落在 2.49–7.47s」，同句列举的却是 3+3=6 次（103-selection-rollout-live.txt:15-17 三次 + 103-final-live.txt 三次），且同文件 :112 与 reports/selection-verification.md:115 都写 6 次/各 3 次。计数自相矛盾，未登记。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:61 称 sha256:000…0 那次的 `source=affinity` 完整决策行在 reports/raw/103-selection-503-and-logs.txt 与 103-child-manifest-and-blob.txt 的决策日志节；这两个文件全文无 affinity 行（全库仅 103-final-live.txt:36 一条，且属 digest sha256:83b2b670…）。上一轮 audit:pending:0f17c293…-u5 的「已改指」理由不成立。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:83 的 `GET /v2/library/busybox/manifests/1.36.1?ns=docker.io` → 200（「4 次 manifest 取用全部 200」）在其引用的 reports/raw/101-real-client-and-blob-fix.txt §B 里不存在（该节只有 :14 一条无仓库名的 blob 行，无 ?ns= 行、无 4 次计数）。该读数无落盘出处。",
+      "matters": "no"
+    },
+    {
+      "what": "503 响应体被以逐字形式引用时漏字段：reports/103-selection-rollout.md:66-67 与 reports/selection-verification.md:88 省掉 `,\"detail\":null`，而 reports/raw/103-final-live.txt:58、103-selection-503-and-logs.txt:9 以及我 2026-10-13 在 103 上实取的同一包络都含该字段；上一轮 audit:pending:f088128a…-u3 只修了决策日志节选处的措辞。",
+      "matters": "no"
+    },
+    {
+      "what": "账本排除理由仍含被复算否定的数字、且其更正不可核对：clear/knowledge/negatives/n-u-i6k3wz.json:38 写「24 格里只有…2 格翻转」，我按 raw-proxy/raw-noaccept 逐格复算＝72 格中 6 格翻转；x-h-nccqnt.json:20/:23 的 scope 仍写 15000–15006（四条 uses 被判 out_of_scope）。做的人称以两份 Hindsight Correction 落地，工作区查不到，前一轮在 103:18888 查该 bank 亦为 0 篇。",
+      "matters": "unclear"
+    },
+    {
+      "what": "测试行号引用已漂移且未登记：reports/selection-verification.md:39 引 `chooser_test.go:488`（现 :516 才是 skew 断言）、:53 引 :450（现为另一条断言），因 chooser_test.go 的 mtime 10:09 晚于所引抓取（09:07/09:15）。raw 原文如此，但照该行号读当前源码会读错。",
+      "matters": "no"
+    },
+    {
+      "what": "两处「判据」记录不一致：任务书登记的判据②含 namespaces.selection、dispatcher 按选择结果转发、GET/HEAD 重选一次、e2e「全不可达→503」，而 clear/goals/g-mv5eqq0n96w2.md:6-11 的判据投影（rev5）不含这四项。两者我都核过且都满足，但哪份权威未在任何产物中说明。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "我复算 .probe/selection/raw-proxy.jsonl：native-absent 组 registry-1.docker.io 三轮都是 401（absent），ghcr/gcr 的匿名 token 端点 403（reports/raw/selection-real-upstream.txt §一.6），实现把认证走完后的 401/403 判 absent、只把 5xx/429/传输失败判「没答」（internal/selection/probe.go:341/374）；103 现场拼错镜像名我实取到 404（3.76s）而非 503。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我在副本按 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格比对得 144 个观测里 6 格 200→404 翻转（ghcr.io、gcr.io × native 组各 3 轮），reports/raw/103-child-manifest-and-blob.txt §1b 记录同一路径不带 Accept 时 404；探测请求带 manifest Accept 且有回归用例（chooser_test.go 的 TestDecideSendsTheManifestAcceptHeader*）。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:89-93 记录带仓库名 blob 被当成 manifest 探测→404、改为 blob 路径后 200（reports/raw/101-real-client-and-blob-fix.txt §C t=0.009678s、2206402 字节）；实现内部有 DecideBlobInRepo 与 blobEnginePath，回归用例 TestDecideBlobInRepoAsksTheBlobPath 断言上游实收路径。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "dispatch.go:424/429 把 ErrNotFound→404 NAME_UNKNOWN、ErrUnreachable→503 UNAVAILABLE；单测 TestAFailingCandidateStillLosesToAnAnswer、TestAnsweredCandidateDecidesWhenAnotherIsDown 与 e2e TestUnqualifiedAllUnreachable（全不可达→503）钉住；我在 103 现场实取拼错镜像名 404，与「无人答才 503」一致。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "reports/raw/101-real-client-and-blob-fix.txt §D 记录 103 自己的 dockerd 仍把 registry-mirrors 指向已下线的 15000–15006，reports/103-selection-rollout.md:87 记录由此导致 103 本地 build 直接失败、改指 127.0.0.1:5000 后恢复；101 的 daemon.json 也已改指 103:5000（同文件 §A）。这条坑在本次真实发生过。"
+    }
+  ],
+  "basis": "六条已登记判据逐条满足，核心观测我在工作区副本与 103 现场独立复核：①internal/selection 并发 HEAD 探测 /v2/<repo>/manifests/<ref>（probe.go:282/330），仅 2xx 记「存在」（:341），5xx/429/传输失败不算答复（:374），按 probe_ttl 缓存（config/selection.go:27）；单测覆盖并发（3µs/247µs<50ms 阈值）、只认成功、token 重试、TTL、NotFound/Unreachable 两种语义。②配置结构体已无 default/listeners、新增 namespaces.selection，app.go:97 与 dispatch.go:424/429 接线，GET/HEAD 至多重选一次（dispatch.go:495）。③同一条 grep（config deploy README.md internal cmd test）只命中 deploy/103/README.md 的迁移表 9-15、45、56、109、173、178，deploy/103 的 compose/rms.yaml/.env 与 .env 均无 15000–15006。④e2e 三用例俱在（e2e_test.go:745/822/914）。⑤我在副本复跑：make check EXIT=0、-race ok（1.788s/6.344s）、e2e 0 FAIL（11 顶层 RUN=10 PASS+1 SKIP、29 RUN 行）。⑥我在 103 只读实取：仅发布 5000/9100、:5000/v2/=401、15000/15003/15006 refused、alpine 200/8077 字节、拼错镜像 404 NAME_UNKNOWN（3.76s）、上传会话 503 UNAVAILABLE，包络与 raw 一致。产物文字仍有若干未登记的读数/引用不符（见 anomalies），都不属判据所需的证据，故交付成立。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 39
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 43
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 48
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 57
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 60
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 88
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 96
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 115
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 3
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 5
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "reports/raw/101-real-client-and-blob-fix.txt",
+      "line": 12
+    },
+    {
+      "path": "reports/raw/101-real-client-and-blob-fix.txt",
+      "line": 14
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 9
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 36
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 57
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 31
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 52
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 61
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 83
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 112
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 330
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 341
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 374
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 27
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 163
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 495
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 1028
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 914
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 178
+    },
+    {
+      "path": "clear/knowledge/negatives/n-u-i6k3wz.json",
+      "line": 38
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 6
+    }
+  ],
+  "card": "六条已登记判据逐条满足，核心观测我在工作区副本与 103 现场独立复核：①internal/selection 并发 HEAD 探测 /v2/<repo>/manifests/<ref>（probe.go:282/330），仅 2xx 记「存在」（:341），5xx/429/传输失败不算答复（:374），按 probe_ttl 缓存（config/selection.go:27）；单测覆盖并发（3µs/247µs<50ms 阈值）、只认成功、token 重试、TTL、NotFound/Unreachable 两种语义。②配置结构体已无 default/listeners、新增 namespaces.selection，app.go:97 与 dispatch.go:424/429 接线，GET/HEAD 至多重选一次（dispatch.go:495）。③同一条 grep（config deploy README.md internal cmd test）只命中 deploy/103/README.md 的迁移表 9-15、45、56、109、173、178，deploy/103 的 compose/rms.yaml/.env 与 .env 均无 15000–15006。④e2e 三用例俱在（e2e_test.go:745/822/914）。⑤我在副本复跑：make check EXIT=0、-race ok（1.788s/6.344s）、e2e 0 FAIL（11 顶层 RUN=10 PASS+1 SKIP、29 RUN 行）。⑥我在 103 只读实取：仅发布 5000/9100、:5000/v2/=401、15000/15003/15006 refused、alpine 200/8077 字节、拼错镜像 404 NAME_UNKNOWN（3.76s）、上传会话 503 UNAVAILABLE，包络与 raw 一致。产物文字仍有若干未登记的读数/引用不符（见 anomalies），都不属判据所需的证据，故交付成立。",
+  "created_at": 1791860160680,
+  "evaluator": "independent"
+}

@@ -1,0 +1,10 @@
+{
+  "basis": "代理 namespace 之一,对应 /data/quay.io",
+  "id": "ns_quay_io",
+  "label": "quay.io namespace",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml"
+  },
+  "type": "namespace"
+}

@@ -1,0 +1,10 @@
+{
+  "basis": "旧栈 15000 端口,接管后由 rms 的 docker.io 监听器顶替",
+  "id": "pb_15000",
+  "label": "15000 端口绑定(docker.io)",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml listeners"
+  },
+  "type": "ns_port_binding"
+}

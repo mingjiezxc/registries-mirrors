@@ -1,0 +1,36 @@
+{
+  "id": "l-xphpmi",
+  "goal": "g-mv5eqq0n96w2",
+  "text": "把镜像站加进有序上游时，先用**真实内容**（manifest + 一个大 blob）量一次再定顺序；「探活正常」不能当作可用证据——上线后看决策行里的逐候选原因，镜像优先的配置很可能当场被否证。",
+  "kind": "check",
+  "about": [
+    "selection_probe",
+    "mirror_cfg_clients",
+    "up_registry_1_docker_io",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000"
+  ],
+  "evidence": "daocloud 的两次实测（大 blob 302 到 R2 后挂满 60s；token 绑客户端 IP、走代理 401）与 upstream 选举只看 /v2/ 探活的机制；以及本次镜像优先后 ghcr.io/gcr.io 恒为 unreachable:upstream-status、改回官方优先后变为 absent:auth-refused。",
+  "boundary": "适用于任何「加/换上游」的配置变更，尤其是上游是免费镜像站时。",
+  "scope_spec": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "basis": "deploy/103/rms.yaml:99-104 与 reports/103-selection-rollout.md:129-133 显示：镜像优先的顺序被 103 决策行（unreachable:upstream-status）当场否证后改为官方优先，正是「先用真实内容量再定顺序」的依据。",
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "active",
+  "at": 1791865480020
+}

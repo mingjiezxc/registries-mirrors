@@ -1,0 +1,172 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "evidence_audit",
+  "step_id": "s5",
+  "auditor_run_id": "1cb47ae8-9a3d-4440-aca4-219f2b2759fe",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [
+    {
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "basis": "原生组 6 个候选各 3/3 轮 2xx（tokenwalk 摘要 ghcr astral-sh/uv、gcr distroless/static、quay prometheus/busybox、k8s pause 均 exists(200)；raw-proxy native 组同）；共享名 library/alpine 只有 Hub 系两个判 exists，103 现场候选含 5 个、赢家 docker.io 确有该镜像；e2e「只有一个 namespace 有它→命中它」与「缺失 tag→404 NAME_UNKNOWN」通过。未出现「有镜像的 namespace 未被选中」或探测把可用候选判失败。"
+    },
+    {
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "basis": "24 轮真实探测 spread（最晚发出−最早发出）全在 0.07–0.63ms，proxy 中位 0.152ms（我按 raw-*.jsonl 重算）；墙钟中位 4.3s vs 串行合计中位 15.4s ⇒ 压缩比 3.53x，direct 3.80x（源文件汇总行同）；单测实测两候选 start 偏差 76µs、Decide 151.9ms（串行下界 300ms）。推翻条件要求「时间差与串行实现一致（≥第一个候选的响应延迟）」，实测差 3 个数量级，未触及。"
+    },
+    {
+      "hypothesis": "h-7yrf0w",
+      "verdict": "support",
+      "basis": "dispatch.go:383 把 ErrNotFound 映成 404 NAME_UNKNOWN（非 5xx）；e2e 「都没有 → 404 NAME_UNKNOWN」、TestUnqualifiedAllUnreachable → 503 UNAVAILABLE 两条边界用例通过；103 现场我复跑拼错镜像名：404 + body code=NAME_UNKNOWN。推翻条件（200/5xx/非 NAME_UNKNOWN）未出现。注意口径：实现把「认证走完的 401/403」也算 absent，所以「全候选 401/403」同样落到 404 而不是 503——这是刻意取舍（代码注释 probe.go:229-241、selection-notes.md:184），不是本次推翻。"
+    },
+    {
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "basis": "我在临时副本重建后用新二进制验证：带 namespaces.default 的旧配置→field default not found in type config.Namespaces、带 listeners→field listeners not found in type config.Config；live-103.yaml 与 config/rms.yaml 均过严格解码（仅差容器内 /etc/rms/htpasswd 路径）；e2e 9/9 用例通过，含显式 namespace 路径、推送（TestPushFlow）、_catalog（TestAuthorisationMatrix/catalog_is_admin-only）、降级（TestDegradedServesCache）；103 现场 :5000/v2/ 401、/readyz 200 ready、15000/15003/15006 拒连、私服 15008 仍 200。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "reports/raw/selection-real-upstream.txt:235-237 实测 ghcr.io/gcr.io 匿名 token 端点回 403、quay.io 拿票后仍 401——「不存在」与「存在但私有/需凭据」在匿名探测下不可区分；实现把这类 401/403 算 absent（internal/selection/probe.go:229-241、262、272），于是「所有候选都拒绝」也会返回 404 NAME_UNKNOWN 而不是 503（103 决策日志五候选全 absent，reports/103-selection-rollout.md:52-57）。做的人把它记为刻意取舍，但 reports/selection-verification.md §七「仍未确定」只写了传输失败掩盖 404 与延迟，没写这一条",
+      "matters": "yes"
+    },
+    {
+      "what": "103 现场我复跑拼错镜像名（/v2/library/definitely-not-here-rms-eval/manifests/latest）耗时 5.19s，超出 reports/selection-verification.md:75 与 reports/103-selection-rollout.md:86 记的「未命中缓存 2.6–3.8s」区间，接近 probe_timeout=10s（config/rms.yaml:73）",
+      "matters": "no"
+    },
+    {
+      "what": "「并发压缩比」的取值口径在产物内不自洽：reports/selection-verification.md:29 的 3.58x 既不等于其源文件汇总行的 3.53x（reports/raw/selection-real-upstream.txt:239），也不等于同表 24.9s/6.6s=3.77，无法复算；直接相关的判据 3 结论靠这条读数支撑",
+      "matters": "yes"
+    }
+  ],
+  "lessons": [],
+  "basis": "判据的骨架都在、可复跑的门禁我也逐条复现了（make check 全绿、go test -race -count=1 ./internal/selection/ ./internal/server/ ok 1.658s/6.300s、go test -tags e2e -count=1 ./test/e2e/... ok 4.629s 9 用例 28 子测试；103 现场复测：/v2/ 401、/readyz 200 ready、五个 rms_namespace_up=1、15000/15003/15006 拒连、拼错镜像名返回 404 NAME_UNKNOWN 原文）。但判据要求「观测真实」，而 reports/selection-verification.md §二 那张真实上游表的关键读数与它自己引用的 reports/raw/selection-real-upstream.txt 对不上：表里 proxy 串行 24.9s、墙钟 6.6s、压缩比 3.58x，源文件摘要与逐轮表给的是串行中位 15.4s、墙钟中位 4.3s、压缩比中位 3.53x（direct 3.80x 两边一致），且 24.9/6.6=3.77 与表内 3.58x 互不相容。§三「不存在」还把 registry-1.docker.io 写成「回 404」，源文件同格 3/3 轮都是 401(T200)。这两处属于结论用到的读数被错误转写/误标，判据的「观测真实」不成立。机制本身（并发探测、取最快、全无则 404 NAME_UNKNOWN、单端点）在单测、真引擎 e2e、103 现场三层都站得住。",
+  "shortfalls": [
+    {
+      "criterion": "「真实上游并发探测的逐候选耗时与开始时间差表格」+ 总判据「观测真实」",
+      "what": "reports/selection-verification.md:26-29 的 proxy 行写 0.12ms/0.3ms、24.9s、6.6s、3.58x；其引用的 reports/raw/selection-real-upstream.txt:239-240 与 .probe/selection/raw-proxy.jsonl 重算给出 spread 中位 0.152ms（max 0.405）、串行中位 15.4s、墙钟中位 4.3s、压缩比中位 3.53x；且 24.9/6.6=3.77≠3.58",
+      "missing": "把该表改成与所引读数一致（或改正引用），使表内每一格都能在 raw jsonl / 源文件里复算出来"
+    },
+    {
+      "criterion": "「哪个候选被认为存在/不存在的判定与依据」",
+      "what": "reports/selection-verification.md:36 写「library/alpine 在 ghcr.io/gcr.io/quay.io 回 401、registry.k8s.io 回 404」，但同时把 registry-1.docker.io 的「不存在」依据写成回 404；reports/raw/selection-real-upstream.txt:254 与 raw-proxy.jsonl 显示该候选 shared-absent 3/3 轮是 401(T200)，判为 absent 靠的是 401/403 也算 absent 的口径",
+      "missing": "「不存在」一栏逐候选写清是 404 还是「认证走完的 401/403 被算 absent」，并标出依据行"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 13
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 15
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 18
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 26
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 29
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 36
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 48
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 239
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 240
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 248
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 254
+    },
+    {
+      "path": ".probe/selection/raw-proxy.jsonl",
+      "line": 1
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 383
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 388
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 255
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 262
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 340
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 488
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 698
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 737
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 40
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 42
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 51
+    },
+    {
+      "path": ".probe/config-check/old-default.yaml",
+      "line": 4
+    },
+    {
+      "path": ".probe/config-check/old-listeners.yaml",
+      "line": 7
+    },
+    {
+      "path": "reports/raw/selection-notes.md",
+      "line": 141
+    },
+    {
+      "path": "reports/raw/selection-notes.md",
+      "line": 184
+    }
+  ],
+  "card": "判据的骨架都在、可复跑的门禁我也逐条复现了（make check 全绿、go test -race -count=1 ./internal/selection/ ./internal/server/ ok 1.658s/6.300s、go test -tags e2e -count=1 ./test/e2e/... ok 4.629s 9 用例 28 子测试；103 现场复测：/v2/ 401、/readyz 200 ready、五个 rms_namespace_up=1、15000/15003/15006 拒连、拼错镜像名返回 404 NAME_UNKNOWN 原文）。但判据要求「观测真实」，而 reports/selection-verification.md §二 那张真实上游表的关键读数与它自己引用的 reports/raw/selection-real-upstream.txt 对不上：表里 proxy 串行 24.9s、墙钟 6.6s、压缩比 3.58x，源文件摘要与逐轮表给的是串行中位 15.4s、墙钟中位 4.3s、压缩比中位 3.53x（direct 3.80x 两边一致），且 24.9/6.6=3.77 与表内 3.58x 互不相容。§三「不存在」还把 registry-1.docker.io 写成「回 404」，源文件同格 3/3 轮都是 401(T200)。这两处属于结论用到的读数被错误转写/误标，判据的「观测真实」不成立。机制本身（并发探测、取最快、全无则 404 NAME_UNKNOWN、单端点）在单测、真引擎 e2e、103 现场三层都站得住。",
+  "created_at": 1791851488947,
+  "evaluator": "independent"
+}

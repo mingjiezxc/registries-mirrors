@@ -1,0 +1,7 @@
+{
+  "gloss": "rms 指标:1=正常代理,0=退化为只读缓存;口径为各 namespace 独立取值。",
+  "id": "rms_namespace_up",
+  "kind": "measure",
+  "label": "namespace 代理是否正常",
+  "unit": "1"
+}

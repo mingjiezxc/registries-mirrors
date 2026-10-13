@@ -1,0 +1,7 @@
+{
+  "gloss": "对候选 namespace 当前当选上游发 HEAD /v2/<repo>/manifests/<ref>，2xx 视为该仓库存在并记录耗时；401 先取 bearer token 再重试一次。",
+  "id": "selection_probe",
+  "kind": "measure",
+  "label": "选择探测",
+  "unit": "ms"
+}

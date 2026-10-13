@@ -410,3 +410,146 @@ func TestRecoveryAfterFailedStartup(t *testing.T) {
 		t.Fatal("OnElect was not invoked on recovery")
 	}
 }
+
+// --- race candidate list and content health --------------------------------
+
+func TestUpstreamsListsEveryEndpointInOrder(t *testing.T) {
+	sel, err := New("docker.io", []string{"https://a/", "https://b", "https://a"}, nil,
+		Options{Logger: testLogger()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Duplicates collapse and trailing slashes are normalised, exactly as the
+	// election sees them.
+	got := sel.Upstreams()
+	want := []string{"https://a", "https://b"}
+	if len(got) != len(want) {
+		t.Fatalf("Upstreams() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Upstreams() = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestKnownBadEndpointsLeaveTheRaceWhenTheHealthLoopCanReadmitThem(t *testing.T) {
+	a := newFakeRegistry(t)
+	b := newFakeRegistry(t)
+	b.up.Store(false)
+
+	sel, err := New("docker.io", []string{a.URL, b.URL}, nil, Options{
+		Interval:      time.Minute,
+		Timeout:       2 * time.Second,
+		FailThreshold: 1,
+		Enabled:       true, // the health loop will re-probe b
+		Logger:        testLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := sel.ElectForStartup(context.Background()); err != nil {
+		t.Fatalf("ElectForStartup: %v", err)
+	}
+	// ElectForStartup stops at the first reachable endpoint, so the health loop
+	// is what learns about the other one. Its error is expected: b is down.
+	if err := sel.ProbeAll(context.Background()); err == nil {
+		t.Fatal("expected the health probe of the dead endpoint to report an error")
+	}
+
+	got := sel.Upstreams()
+	if len(got) != 1 || got[0] != a.URL {
+		t.Fatalf("Upstreams() = %v, want only the reachable %s", got, a.URL)
+	}
+}
+
+func TestEveryEndpointLooksBadSoTheRaceStillGetsThem(t *testing.T) {
+	a := newFakeRegistry(t)
+	a.up.Store(false)
+	b := newFakeRegistry(t)
+	b.up.Store(false)
+
+	sel, err := New("docker.io", []string{a.URL, b.URL}, nil, Options{
+		Interval:      time.Minute,
+		Timeout:       time.Second,
+		FailThreshold: 1,
+		Enabled:       true,
+		Logger:        testLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := sel.ElectForStartup(context.Background()); err == nil {
+		t.Fatal("expected startup to fail with both endpoints down")
+	}
+
+	// A namespace whose every endpoint looks bad must still be probed: the
+	// content probe is the only way one of them proves it works again.
+	if got := sel.Upstreams(); len(got) != 2 {
+		t.Fatalf("Upstreams() = %v, want both endpoints", got)
+	}
+}
+
+func TestContentFailureDropsAnUpstreamFromTheRaceAndRecoversOnAnswer(t *testing.T) {
+	a := newFakeRegistry(t)
+	b := newFakeRegistry(t)
+
+	sel, err := New("docker.io", []string{a.URL, b.URL}, nil, Options{
+		Interval:      time.Minute,
+		Timeout:       time.Second,
+		FailThreshold: 2,
+		Logger:        testLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// One unanswered content probe is not enough.
+	sel.ObserveContentProbe(b.URL, false, 0, context.DeadlineExceeded)
+	if got := sel.Upstreams(); len(got) != 2 {
+		t.Fatalf("after one failure Upstreams() = %v, want both endpoints", got)
+	}
+
+	// The threshold latches it out, even though its /v2/ answers.
+	sel.ObserveContentProbe(b.URL, false, 0, context.DeadlineExceeded)
+	got := sel.Upstreams()
+	if len(got) != 1 || got[0] != a.URL {
+		t.Fatalf("after the threshold Upstreams() = %v, want only %s", got, a.URL)
+	}
+	if bad := sel.ContentBad(); len(bad) != 1 || bad[0] != b.URL {
+		t.Fatalf("ContentBad() = %v, want [%s]", bad, b.URL)
+	}
+
+	// Answering content clears the cooldown immediately.
+	sel.ObserveContentProbe(b.URL, true, 5*time.Millisecond, nil)
+	if got := sel.Upstreams(); len(got) != 2 {
+		t.Fatalf("after recovery Upstreams() = %v, want both endpoints", got)
+	}
+	if bad := sel.ContentBad(); len(bad) != 0 {
+		t.Fatalf("ContentBad() = %v, want none", bad)
+	}
+}
+
+func TestRefusalsAreAnswersAndNeverDemoteAnUpstream(t *testing.T) {
+	a := newFakeRegistry(t)
+	b := newFakeRegistry(t)
+
+	sel, err := New("docker.io", []string{a.URL, b.URL}, nil, Options{
+		Interval:      time.Minute,
+		FailThreshold: 1,
+		Logger:        testLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// A 404 is an answer: the endpoint is serving content, it just does not
+	// have this repository. A 401/403 is the same shape.
+	for i := 0; i < 5; i++ {
+		sel.ObserveContentProbe(b.URL, true, time.Millisecond, nil)
+	}
+	if got := sel.Upstreams(); len(got) != 2 {
+		t.Fatalf("Upstreams() = %v, want both endpoints after refusals", got)
+	}
+}

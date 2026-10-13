@@ -21,6 +21,7 @@ import (
 	"github.com/watsons/rms/internal/obs"
 	"github.com/watsons/rms/internal/registry"
 	"github.com/watsons/rms/internal/registryapp"
+	"github.com/watsons/rms/internal/selection"
 	"github.com/watsons/rms/internal/server"
 )
 
@@ -90,9 +91,25 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger, telemetry 
 		return nil, fmt.Errorf("start namespaces: %w", err)
 	}
 
+	// The selector probes every upstream of every proxy namespace with the same
+	// outbound client the engines use, so a probe honours the configured proxy,
+	// timeouts and TLS settings and shares its connection pool.
+	chooser := selection.New(mgr, selection.Options{
+		Client:           client,
+		TTL:              cfg.Namespaces.Selection.ProbeTTL.Std(),
+		Timeout:          cfg.Namespaces.Selection.ProbeTimeout.Std(),
+		DecisionDeadline: cfg.Namespaces.Selection.DecisionDeadline.Std(),
+		Balance:          cfg.BalanceFor,
+		BalanceWindow:    cfg.Namespaces.Selection.BalanceWindow,
+		Observer:         telemetry.Recorder,
+		Logger:           log,
+	})
+
+	logAuthPosture(log, cfg)
+
 	logStartupSummary(log, cfg, table, authenticator)
 
-	return server.New(cfg, log, table, authenticator, mgr, telemetry), nil
+	return server.New(cfg, log, table, authenticator, mgr, chooser, telemetry), nil
 }
 
 // personalNamespaces returns the htpasswd users that can own a namespace.
@@ -138,34 +155,19 @@ func htpasswdPath(cfg *config.Config) string {
 
 // externalURLs maps every namespace to the origin clients use for it.
 //
-// A namespace bound to its own listener inherits that listener's origin so that
-// generated upload URLs carry the right scheme, host and port. Everything else
-// falls back to the primary listener's origin, which may be empty — in that case
-// the engine derives the origin from each request, which is correct when rms is
-// reached directly.
+// There is a single listener, so every namespace is reached through it and
+// inherits server.external_url. It may be empty, in which case the engine
+// derives the origin from each request, which is correct when rms is reached
+// directly.
 func externalURLs(cfg *config.Config, table *namespace.Table) map[string]string {
 	out := map[string]string{}
 
-	for _, l := range cfg.EffectiveListeners() {
-		if l.Namespace == "" {
-			continue
-		}
-		if _, dup := out[l.Namespace]; dup {
-			continue
-		}
-		out[l.Namespace] = l.ExternalURL
-	}
-
 	names := make([]string, 0, len(cfg.Namespaces.Proxy)+len(table.LocalNames()))
-	for name := range cfg.Namespaces.Proxy {
-		names = append(names, name)
-	}
+	names = append(names, table.ProxyNames()...)
 	names = append(names, table.LocalNames()...)
 
 	for _, name := range names {
-		if _, ok := out[name]; !ok {
-			out[name] = cfg.Server.ExternalURL
-		}
+		out[name] = cfg.Server.ExternalURL
 	}
 	return out
 }
@@ -187,18 +189,56 @@ func toSet(names []string) map[string]bool {
 	return out
 }
 
+// logAuthPosture states the pull/push policy at startup.
+//
+// The failure modes it exists for are silent. An endpoint with authentication
+// switched off accepts pushes from anyone who can reach it. An endpoint that
+// challenges anonymous content reads is invisible to a Docker daemon's
+// registry-mirrors list: the daemon's mirror requests carry no credentials for
+// the mirror host, so it abandons the mirror and falls back to the upstream
+// registry — which looks like a working pull while the cache is bypassed
+// entirely (measured: reports/mirror-probe-103.md). Neither shows up as an
+// error, so both are said out loud once, here.
+func logAuthPosture(log *slog.Logger, cfg *config.Config) {
+	if cfg.Auth.Type != "htpasswd" {
+		log.Warn("authentication is disabled: anyone who can reach this endpoint may push to its local namespaces",
+			"auth_type", cfg.Auth.Type)
+	}
+	if !cfg.Auth.AnonymousPullProxy {
+		log.Warn("anonymous pulls of proxy namespaces are disabled: a Docker daemon using this host as a registry mirror will abandon it and pull from the upstream registry instead")
+	}
+	if cfg.Auth.AnonymousPullLocal {
+		log.Warn("anonymous pulls of local namespaces are enabled: every client can read every private namespace")
+	}
+}
+
+// logStartupSummary reports what was configured, including the knobs that
+// changed behaviour in this version: whether upstreams are raced, and how the
+// winners' traffic is balanced.
 func logStartupSummary(log *slog.Logger, cfg *config.Config, table *namespace.Table, a *auth.Authenticator) {
 	local := table.LocalNames()
-	proxy := make([]string, 0, len(cfg.Namespaces.Proxy))
-	for name := range cfg.Namespaces.Proxy {
-		proxy = append(proxy, name)
+	proxy := table.ProxyNames()
+
+	var racing, ordered []string
+	for _, name := range proxy {
+		if cfg.RaceEnabledFor(name) {
+			racing = append(racing, name)
+			continue
+		}
+		ordered = append(ordered, name)
 	}
-	sort.Strings(proxy)
 
 	log.Info("namespaces configured",
 		"local", strings.Join(local, ","),
 		"proxy", strings.Join(proxy, ","),
-		"default", table.Default(),
+		"proxy_candidates", len(proxy),
+		"selection_probe_ttl", cfg.Namespaces.Selection.ProbeTTL.Std().String(),
+		"selection_probe_timeout", cfg.Namespaces.Selection.ProbeTimeout.Std().String(),
+		"selection_decision_deadline", cfg.Namespaces.Selection.DecisionDeadline.Std().String(),
+		"selection_balance", cfg.Namespaces.Selection.Balance,
+		"selection_balance_window", cfg.Namespaces.Selection.BalanceWindow,
+		"upstream_race", strings.Join(racing, ","),
+		"upstream_ordered", strings.Join(ordered, ","),
 		"storage_root", cfg.Storage.Root,
 		"auth", authMode(a),
 	)

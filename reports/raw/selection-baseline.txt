@@ -1,0 +1,26 @@
+# 选择器改造前的基线（2026-10-12T23:33:58+08:00）
+
+## go test ./...
+?   	github.com/watsons/rms/cmd/rms	[no test files]
+?   	github.com/watsons/rms/internal/app	[no test files]
+ok  	github.com/watsons/rms/internal/auth	(cached)
+ok  	github.com/watsons/rms/internal/config	0.014s
+?   	github.com/watsons/rms/internal/httpx	[no test files]
+ok  	github.com/watsons/rms/internal/namespace	(cached)
+ok  	github.com/watsons/rms/internal/obs	(cached)
+?   	github.com/watsons/rms/internal/registry	[no test files]
+ok  	github.com/watsons/rms/internal/registryapp	(cached)
+?   	github.com/watsons/rms/internal/selection	[no test files]
+ok  	github.com/watsons/rms/internal/server	0.732s
+ok  	github.com/watsons/rms/internal/storage	(cached)
+ok  	github.com/watsons/rms/internal/upstream	(cached)
+ok  	github.com/watsons/rms/test/distbehavior	(cached)
+
+## go test -tags e2e -count=1 ./test/e2e/...
+ok  	github.com/watsons/rms/test/e2e	3.305s
+
+## 在线端点读数（改动前）
+:5000   http_code=401 time_total=0.000611
+:15000  http_code=200 time_total=0.000632
+:15003  http_code=200 time_total=0.000600
+:15004  http_code=200 time_total=0.000521

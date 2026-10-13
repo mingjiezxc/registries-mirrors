@@ -1,0 +1,256 @@
+{
+  "id": "f-goad3t",
+  "goal": "g-mv5eqq0n96w2",
+  "hypothesis": "h-63ooxn",
+  "text": "删除 listeners/anonymous_root 与 namespaces.default 后，服务仍能用单一主端点启动：显式 namespace 路径、推送、_catalog、/readyz 全部照旧。",
+  "about": [
+    "svc_rms_103",
+    "host_103",
+    "pb_primary_5000",
+    "ns_port_binding",
+    "r_binding_serves",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io"
+  ],
+  "scope": "条件 上游=docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io、主机=192.168.188.103、出网=局域网代理 192.168.188.1:3128、客户端=docker/containerd 直连 103、部署方式=docker compose + 单个主端点 :5000",
+  "scope_spec": {
+    "conditions": {
+      "上游": "docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "refute_when": "启动失败（严格解码报错、无监听器）、或 e2e 里 login/push/catalog/degraded 任一条不再通过。",
+  "level": "L3",
+  "evidence": [
+    "e-k4tehi",
+    "e-3wd5c9"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-k4tehi",
+      "step": "s3",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件是「启动失败或 e2e 里 login/push/catalog/degraded 任一条不再通过」。删除 default/listeners 后：make check 全绿（含 config/namespace/server/app 四包）、e2e 9 用例全绿、真 distribution 引擎的 app_test 通过；旧键被严格解码拒绝且报错文案明确。未命中推翻条件。",
+      "refs": [
+        "internal/server/dispatch_test.go",
+        "internal/app/app_test.go",
+        ".probe/config-check/live-103.yaml",
+        "internal/config/config.go",
+        "internal/namespace/resolver.go",
+        "internal/server/dispatch.go",
+        "internal/app/app.go",
+        "cmd/rms/main.go",
+        "/"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "internal/server/dispatch_test.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/app/app_test.go"
+        },
+        {
+          "kind": "artifact",
+          "path": ".probe/config-check/live-103.yaml"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/config/config.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/namespace/resolver.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/server/dispatch.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/app/app.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "cmd/rms/main.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "/",
+          "from_basis": true
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791848164108
+    },
+    {
+      "id": "e-3wd5c9",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "严格解码实测：带 default 报 line 4 field default not found in type config.Namespaces、带 listeners 报 line 7 field listeners not found in type config.Config（我用 .probe/bin/rms-check 复跑逐字相同）；单一主端点起来后 e2e 全绿：TestLoginContract、TestPushFlow、TestAuthorisationMatrix（含 catalog_is_admin-only 子测试）、TestDegradedServesCache 与显式 namespace 路径用例均 PASS，0 FAIL。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true,
+      "at": 0
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-3wd5c9",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "严格解码实测：带 default 报 line 4 field default not found in type config.Namespaces、带 listeners 报 line 7 field listeners not found in type config.Config（我用 .probe/bin/rms-check 复跑逐字相同）；单一主端点起来后 e2e 全绿：TestLoginContract、TestPushFlow、TestAuthorisationMatrix（含 catalog_is_admin-only 子测试）、TestDegradedServesCache 与显式 namespace 路径用例均 PASS，0 FAIL。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "id": "svc_rms_103",
+        "kind": "instance",
+        "result": "serving",
+        "type": "service",
+        "value": "svc_rms_103"
+      },
+      "predicate": "r_binding_serves",
+      "subject": {
+        "id": "pb_primary_5000",
+        "type": "ns_port_binding"
+      }
+    }
+  ],
+  "definitions": {
+    "r_binding_serves": "fnv:054dc8bf",
+    "ns_port_binding": "fnv:dc6b63cf",
+    "service": "fnv:90e8622b",
+    "host": "fnv:c9be710b",
+    "namespace": "fnv:206e9ab1"
+  },
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "established",
+  "review": null,
+  "at": 1791854398482,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791854398482,
+      "level": "L3"
+    }
+  ]
+}

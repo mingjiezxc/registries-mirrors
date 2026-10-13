@@ -2,8 +2,9 @@
 
 // Package e2e drives a real rms process against a real (in-process) upstream
 // registry over HTTP, asserting the behaviours that matter: the docker login
-// contract, pull-through caching, the default-namespace rewrite, the push flow
-// including the Location round-trip, and the authorisation matrix.
+// contract, pull-through caching, namespace selection for an unqualified
+// request, the push flow including the Location round-trip, and the
+// authorisation matrix.
 //
 // It deliberately needs no internet access and no docker daemon, so it is
 // deterministic. For the client-driven variant set RMS_E2E_DOCKER=1.
@@ -26,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,6 +49,10 @@ const (
 	adminUser    = "admin"
 	adminPass    = "adminpw"
 	proxyNS      = "docker.io"
+	// secondNS is the second proxy namespace every fixture configures. An
+	// unqualified request has to choose between it and proxyNS, which is what
+	// makes the selection tests meaningful.
+	secondNS = "ghcr.io"
 )
 
 // ---------------------------------------------------------------------------
@@ -168,6 +174,14 @@ type fakeUpstream struct {
 	fixt fixture
 	repo string
 	tag  string
+
+	// delay slows every response, which is how a racing test makes one mirror
+	// of a namespace measurably slower than another.
+	delay time.Duration
+	mu    sync.Mutex
+	// paths records what this upstream was asked for, so a test can tell a
+	// probe (a manifest HEAD) from the fetches of a served pull.
+	paths []string
 }
 
 func startFakeUpstream(t *testing.T, fx fixture, repo, tag string) *fakeUpstream {
@@ -190,6 +204,17 @@ func startFakeUpstream(t *testing.T, fx fixture, repo, tag string) *fakeUpstream
 
 	up.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		up.hits.Add(1)
+		up.mu.Lock()
+		up.paths = append(up.paths, r.Method+" "+r.URL.Path)
+		delay := up.delay
+		up.mu.Unlock()
+		if delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-r.Context().Done():
+				return
+			}
+		}
 		up.app.ServeHTTP(w, r)
 	}))
 	t.Cleanup(func() { up.srv.Close(); _ = up.app.Shutdown() })
@@ -274,13 +299,67 @@ func withDigest(loc, digest string) string {
 // ---------------------------------------------------------------------------
 
 type rmsInstance struct {
-	primary string // http://127.0.0.1:PORT (multi-namespace)
-	docker  string // http://127.0.0.1:PORT (namespace-bound to docker.io)
+	primary string // http://127.0.0.1:PORT — the only content endpoint
 	dataDir string
+}
+
+// rmsOptions describes one rms under test. There is deliberately no
+// namespace-bound listener any more: everything is served by the single
+// multi-namespace endpoint, and an unqualified request picks its namespace.
+type rmsOptions struct {
+	// dockerUpstream backs the proxyNS namespace. proxyNS keeps
+	// official_library, so a single-segment repository means library/<name>
+	// there and only there.
+	dockerUpstream string
+	// dockerUpstreams, when set, replaces dockerUpstream with a list of mirrors
+	// for the proxyNS namespace: the shape a namespace with several upstreams
+	// has, which is what the upstream race exists for.
+	dockerUpstreams []string
+	// secondNSUpstream backs the secondNS namespace, which has no
+	// official_library rule. It is what an unqualified request has to be
+	// chosen *over* when only proxyNS has the repository.
+	secondNSUpstream string
+	// dataDir reuses existing storage instead of a fresh temp dir.
+	dataDir string
+	// probeTimeout bounds one selection probe. Kept short so a test that
+	// deliberately points at a dead port does not wait 10s.
+	probeTimeout string
+	// healthEnabled must be false when the upstream is deliberately dead at
+	// startup, otherwise the namespace never builds an engine.
+	healthEnabled bool
+}
+
+// upstreamList renders a namespace's upstreams as a YAML flow sequence: the
+// single default, or the list a racing test configured.
+func upstreamList(single string, list []string) string {
+	if len(list) == 0 {
+		list = []string{single}
+	}
+	quoted := make([]string, 0, len(list))
+	for _, u := range list {
+		quoted = append(quoted, fmt.Sprintf("%q", u))
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 func startRMS(t *testing.T, upstreamURL string) *rmsInstance {
 	t.Helper()
+	// Both namespaces point at the same upstream by default, so a test that
+	// only cares about proxyNS behaves as before. Selection tests use
+	// startRMSOpts with two different upstreams.
+	return startRMSOpts(t, rmsOptions{
+		dockerUpstream:   upstreamURL,
+		secondNSUpstream: upstreamURL,
+		healthEnabled:    true,
+	})
+}
+
+func startRMSOpts(t *testing.T, o rmsOptions) *rmsInstance {
+	t.Helper()
+
+	if o.probeTimeout == "" {
+		o.probeTimeout = "2s"
+	}
 
 	// Hermetic: no outbound proxy, so the loopback upstream is reached directly.
 	t.Setenv("HTTP_PROXY", "")
@@ -303,14 +382,19 @@ func startRMS(t *testing.T, upstreamURL string) *rmsInstance {
 		t.Fatalf("write htpasswd: %v", err)
 	}
 
-	dataDir := filepath.Join(dir, "data")
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		t.Fatalf("mkdir data: %v", err)
+	dataDir := o.dataDir
+	if dataDir == "" {
+		dataDir = filepath.Join(dir, "data")
+		if err := os.MkdirAll(dataDir, 0o755); err != nil {
+			t.Fatalf("mkdir data: %v", err)
+		}
 	}
 
-	primaryPort := freePort(t)
-	boundPort := freePort(t)
-	metricsPort := freePort(t)
+	// Both ports are reserved in one call, while both listeners are still open,
+	// so rms can never be configured with two identical listeners. See
+	// reservePorts.
+	ports := reservePorts(t, 2)
+	primaryPort, metricsPort := ports[0], ports[1]
 
 	cfgBody := fmt.Sprintf(`
 server:
@@ -328,18 +412,20 @@ auth:
   anonymous_pull_local: false
   admin_users: [%s]
 namespaces:
-  default: %s
+  selection:
+    probe_ttl: 30s
+    probe_timeout: %s
   proxy:
     %s:
-      upstreams: [%q]
+      upstreams: %s
       official_library: true
       ttl: 0
-listeners:
-  - listen: "127.0.0.1:%d"
-    namespace: %s
+    %s:
+      upstreams: [%q]
+      ttl: 0
 upstream:
   health:
-    enabled: true
+    enabled: %t
     interval: 5s
     timeout: 5s
   http:
@@ -353,7 +439,8 @@ observability:
     enabled: false
   metrics:
     listen: "127.0.0.1:%d"
-`, primaryPort, dataDir, htpasswdFile, adminUser, proxyNS, proxyNS, upstreamURL, boundPort, proxyNS, metricsPort)
+`, primaryPort, dataDir, htpasswdFile, adminUser, o.probeTimeout,
+		proxyNS, upstreamList(o.dockerUpstream, o.dockerUpstreams), secondNS, o.secondNSUpstream, o.healthEnabled, metricsPort)
 
 	cfgPath := filepath.Join(dir, "rms.yaml")
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
@@ -388,21 +475,129 @@ observability:
 
 	inst := &rmsInstance{
 		primary: fmt.Sprintf("http://127.0.0.1:%d", primaryPort),
-		docker:  fmt.Sprintf("http://127.0.0.1:%d", boundPort),
 		dataDir: dataDir,
 	}
-	waitReady(t, inst.primary+"/v2/", boundPort)
+	waitReady(t, inst.primary+"/v2/", primaryPort)
 	return inst
 }
 
-func freePort(t *testing.T) int {
+// issuedPorts remembers every loopback port this test process has handed out.
+//
+// net.Listen("tcp", "127.0.0.1:0") on its own is not a port allocator: the
+// listener is closed before the caller binds, and the kernel is free to hand
+// that just-released port straight back to the next call. Two consecutive calls
+// therefore collide occasionally — measured at 3 pairs in 20 000 in this
+// process with nothing else running, and more often during a full run, where
+// the fake upstreams and the rms instances churn ephemeral ports alongside it.
+// The symptom is a config that fails validation with
+// "observability.metrics.listen: must differ from server.listen", i.e. a
+// randomly red e2e run that has nothing to do with the code under test.
+//
+// A port stays in this set for the life of the process, so neither reservePorts
+// nor a deliberately-dead port can be handed out twice.
+var (
+	issuedMu    sync.Mutex
+	issuedPorts = map[int]bool{}
+)
+
+// reservePorts returns n distinct loopback ports that nothing is listening on.
+//
+// It holds every listener open until the whole set has been chosen, because a
+// port cannot be handed to a second reservation while the first still holds it.
+// That is what makes the result collision-free rather than merely
+// usually-collision-free: the kernel only reuses a port once every listener on
+// it is closed, and by then this call is done choosing.
+//
+// The listeners are closed before returning, so the caller can bind them; that
+// last window is the unavoidable TOCTOU of address-based reservation, and it is
+// orders of magnitude smaller than the one this replaces.
+func reservePorts(t *testing.T, n int) []int {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("reserve port: %v", err)
+
+	issuedMu.Lock()
+	defer issuedMu.Unlock()
+
+	var (
+		open  []net.Listener
+		ports []int
+	)
+	// Safety net: if this function fails partway (t.Fatalf below), nothing may
+	// be left listening on a port a later test wants.
+	t.Cleanup(func() {
+		for _, ln := range open {
+			_ = ln.Close()
+		}
+	})
+
+	for len(ports) < n {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("reserve port: %v", err)
+		}
+		open = append(open, ln) // stays open: the kernel cannot hand it out again
+		port := ln.Addr().(*net.TCPAddr).Port
+		if issuedPorts[port] {
+			continue // already given to an earlier test in this process
+		}
+		issuedPorts[port] = true
+		ports = append(ports, port)
 	}
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port
+
+	for _, ln := range open {
+		_ = ln.Close()
+	}
+	open = nil
+	return ports
+}
+
+// deadPort returns a loopback port that nothing is listening on and that no
+// later reservation in this process will reuse.
+func deadPort(t *testing.T) int {
+	t.Helper()
+	return reservePorts(t, 1)[0]
+}
+
+// TestReservePortsNeverRepeat pins the property the flake violated: no port is
+// ever handed out twice in this process, and nothing is left listening on a
+// port that was handed out.
+//
+// It is deterministic on purpose. The bug it guards against showed up in about
+// one full run in a few hundred, so running the suite a handful of times is not
+// evidence that it is gone; asserting the property directly is.
+func TestReservePortsNeverRepeat(t *testing.T) {
+	const total = 200
+
+	seen := map[int]bool{}
+	// Two small reservations of the size the harness makes, then one large one:
+	// the harness asks for its pair repeatedly, so a repeat would show up first
+	// across separate calls rather than within a single batch.
+	for i := 0; i < 20; i++ {
+		for _, p := range reservePorts(t, 2) {
+			if seen[p] {
+				t.Fatalf("port %d was handed out twice", p)
+			}
+			seen[p] = true
+		}
+	}
+	for _, p := range reservePorts(t, total-40) {
+		if seen[p] {
+			t.Fatalf("port %d was handed out twice", p)
+		}
+		seen[p] = true
+	}
+	if len(seen) != total {
+		t.Fatalf("reserved %d distinct ports, want %d", len(seen), total)
+	}
+
+	// And every one of them must be free: nothing may still be listening, or a
+	// test that binds its reservation would fail with "address already in use".
+	for p := range seen {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		if err != nil {
+			t.Fatalf("reserved port %d is not bindable: %v", p, err)
+		}
+		_ = ln.Close()
+	}
 }
 
 // waitReady polls the given port until rms answers, so tests never race startup.
@@ -520,13 +715,18 @@ func TestPullThroughAndCache(t *testing.T) {
 		}
 	})
 
-	t.Run("default namespace rewrite", func(t *testing.T) {
+	t.Run("unqualified request is resolved by selection", func(t *testing.T) {
 		resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil, manifestAccept)
 		requireStatus(t, resp, http.StatusOK, "unqualified two-segment manifest")
+		if body := readBody(resp); body != string(fx.manifest) {
+			t.Errorf("unqualified manifest body differs from the upstream fixture")
+		}
 	})
 
 	t.Run("single segment becomes a library image", func(t *testing.T) {
-		// Upstream only has library/demo, so this proves the library/ injection.
+		// The upstream only has library/demo, and only the proxyNS namespace
+		// has official_library, so this proves the library/ injection happens
+		// per candidate and is what makes proxyNS win.
 		resp := anon.do(http.MethodGet, inst.primary+"/v2/demo/manifests/v1", nil, manifestAccept)
 		requireStatus(t, resp, http.StatusOK, "single-segment manifest with library/ injection")
 	})
@@ -557,10 +757,238 @@ func TestPullThroughAndCache(t *testing.T) {
 		}
 	})
 
-	t.Run("namespace-bound listener needs no prefix", func(t *testing.T) {
-		resp := anon.do(http.MethodGet, inst.docker+"/v2/library/demo/manifests/v1", nil, manifestAccept)
-		requireStatus(t, resp, http.StatusOK, "namespace-bound manifest")
+}
+
+// TestUnqualifiedPicksNamespaceWithContent is the selection contract: an
+// unqualified request must be served by the namespace that actually has the
+// repository, decided per request rather than by a fixed default. Two fake
+// upstreams carry different content, so "which one answered" is observable both
+// in the response body and in the per-upstream hit counters.
+//
+// It is deliberately a *cold cache* test: nothing is pulled before the
+// unqualified request, so the selection probe has to answer for real instead of
+// short-circuiting on content already on local disk.
+//
+// PRECONDITION on the code under test: the selection probe must send the
+// manifest Accept media types on its HEAD (and on the GET it degrades to).
+// Without them a registry that stores OCI manifests rejects the probe with
+// "OCI manifest found, but accept header does not support OCI manifests" —
+// ghcr.io answers 404 for an image that exists — and the two subtests below
+// fail with a NAME_UNKNOWN that is not the client's fault. That is a defect in
+// internal/selection/probe.go, not in this test: the repository really is
+// there. Measured readings and the reproduction are in
+// reports/raw/config-docs-notes.md §5 and reports/raw/selection-real-upstream.txt §8.
+func TestUnqualifiedPicksNamespaceWithContent(t *testing.T) {
+	fx := newFixture(t)
+	dockerUp := startFakeUpstream(t, fx, "library/demo", "v1")
+	// The other namespace has content of its own, but not the repository under
+	// test — so a fixed default could not fake a pass here.
+	otherUp := startFakeUpstream(t, fx, "owner/other", "v1")
+
+	inst := startRMSOpts(t, rmsOptions{
+		dockerUpstream:   dockerUp.url,
+		secondNSUpstream: otherUp.url,
+		healthEnabled:    true,
 	})
+
+	anon := newClient(t)
+	manifestAccept := map[string]string{"Accept": "application/vnd.oci.image.manifest.v1+json"}
+
+	t.Run("only one namespace has it, so it wins", func(t *testing.T) {
+		beforeDocker, beforeOther := dockerUp.hits.Load(), otherUp.hits.Load()
+
+		resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil, manifestAccept)
+		requireStatus(t, resp, http.StatusOK, "unqualified manifest")
+		if body := readBody(resp); body != string(fx.manifest) {
+			t.Errorf("served manifest is not the fixture")
+		}
+
+		// Both candidates must have been probed: the decision is a real
+		// concurrent probe, not a first-match lookup.
+		if dockerUp.hits.Load() <= beforeDocker {
+			t.Errorf("namespace %s was never probed", proxyNS)
+		}
+		if otherUp.hits.Load() <= beforeOther {
+			t.Errorf("namespace %s was never probed", secondNS)
+		}
+	})
+
+	t.Run("the other namespace wins for its own repository", func(t *testing.T) {
+		// Same configuration, different repository: owner/other exists only in
+		// the second namespace, so the winner must flip.
+		resp := anon.do(http.MethodGet, inst.primary+"/v2/owner/other/manifests/v1", nil, manifestAccept)
+		requireStatus(t, resp, http.StatusOK, "unqualified manifest for the second namespace")
+		if body := readBody(resp); body != string(fx.manifest) {
+			t.Errorf("served manifest is not the fixture")
+		}
+	})
+
+	t.Run("explicit namespace prefix stays inside its namespace", func(t *testing.T) {
+		// A path that names a namespace must never consult the selection: the
+		// other namespace's upstream must see no traffic at all. (The named
+		// namespace's own upstreams are still raced among themselves.)
+		beforeOther := otherUp.hits.Load()
+		resp := anon.do(http.MethodGet, inst.primary+"/v2/"+proxyNS+"/library/demo/manifests/v1", nil, manifestAccept)
+		requireStatus(t, resp, http.StatusOK, "explicit namespaced manifest")
+		if got := otherUp.hits.Load(); got != beforeOther {
+			t.Errorf("explicit /v2/%s/ request probed %s anyway (%d -> %d)", proxyNS, secondNS, beforeOther, got)
+		}
+
+		beforeDocker := dockerUp.hits.Load()
+		resp = anon.do(http.MethodGet, inst.primary+"/v2/"+secondNS+"/owner/other/manifests/v1", nil, manifestAccept)
+		requireStatus(t, resp, http.StatusOK, "explicit manifest for the second namespace")
+		if got := dockerUp.hits.Load(); got != beforeDocker {
+			t.Errorf("explicit /v2/%s/ request probed %s anyway (%d -> %d)", secondNS, proxyNS, beforeDocker, got)
+		}
+	})
+
+	t.Run("a missing tag is NAME_UNKNOWN, not UNAVAILABLE", func(t *testing.T) {
+		// Every candidate answers and none has it: that is a definitive "no",
+		// which the client may cache, so it must be a 404.
+		resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/nope", nil, manifestAccept)
+		requireStatus(t, resp, http.StatusNotFound, "unqualified missing tag")
+		if code := firstErrorCode(t, resp); code != "NAME_UNKNOWN" {
+			t.Errorf("error code = %q, want NAME_UNKNOWN", code)
+		}
+	})
+}
+
+// TestUnqualifiedAllUnreachable is the other side of that boundary: when no
+// candidate could be probed at all, the answer is not knowable, so rms must say
+// 503 rather than claim the image does not exist.
+func TestUnqualifiedAllUnreachable(t *testing.T) {
+	// A port that was reserved and then released: nothing listens on it.
+	dead := fmt.Sprintf("http://127.0.0.1:%d", deadPort(t))
+
+	inst := startRMSOpts(t, rmsOptions{
+		dockerUpstream:   dead,
+		secondNSUpstream: dead,
+		probeTimeout:     "2s",
+	})
+
+	anon := newClient(t)
+	resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil,
+		map[string]string{"Accept": "application/vnd.oci.image.manifest.v1+json"})
+	requireStatus(t, resp, http.StatusServiceUnavailable, "unqualified request with no reachable upstream")
+	if code := firstErrorCode(t, resp); code != "UNAVAILABLE" {
+		t.Errorf("error code = %q, want UNAVAILABLE", code)
+	}
+}
+
+// TestUnqualifiedBlobFollowsTheManifest covers the second half of an unqualified
+// pull: a client that has just read /v2/<repo>/manifests/<tag> then asks for the
+// layers and the config with NO repository in the path — /v2/blobs/<digest>.
+//
+// That path names no repository, so nothing in it can be probed and the request
+// cannot be decided on its own merits. It has to follow the decision already
+// made for the repository it belongs to (repository affinity). If it does not,
+// a cold pull 404s on the first blob even though the manifest was served
+// correctly — the manifest succeeds and the image still cannot be pulled.
+func TestUnqualifiedBlobFollowsTheManifest(t *testing.T) {
+	fx := newFixture(t)
+	dockerUp := startFakeUpstream(t, fx, "library/demo", "v1")
+	// Second namespace with content of its own: if the blob request were probed
+	// instead of following affinity, this upstream would show traffic.
+	otherUp := startFakeUpstream(t, fx, "owner/other", "v1")
+
+	inst := startRMSOpts(t, rmsOptions{
+		dockerUpstream:   dockerUp.url,
+		secondNSUpstream: otherUp.url,
+		healthEnabled:    true,
+	})
+
+	anon := newClient(t)
+	manifestAccept := map[string]string{"Accept": "application/vnd.oci.image.manifest.v1+json"}
+
+	// 1. The manifest establishes the affinity. Nothing is cached beforehand,
+	// so this is the cold path that matters.
+	resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil, manifestAccept)
+	requireStatus(t, resp, http.StatusOK, "unqualified manifest")
+	manifestBody := readBody(resp)
+	if manifestBody != string(fx.manifest) {
+		t.Fatalf("served manifest is not the fixture")
+	}
+
+	// Read the config digest off the wire rather than trusting the fixture
+	// constant: the client is the one that decides which blob to ask for next.
+	var manifestDoc struct {
+		Config struct {
+			Digest string `json:"digest"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal([]byte(manifestBody), &manifestDoc); err != nil {
+		t.Fatalf("decode manifest %q: %v", manifestBody, err)
+	}
+	configDigest := manifestDoc.Config.Digest
+	if configDigest != fx.configDigest {
+		t.Fatalf("manifest config digest = %q, want %q", configDigest, fx.configDigest)
+	}
+
+	// 2. The config blob, addressed with no repository in the path.
+	beforeDocker, beforeOther := dockerUp.hits.Load(), otherUp.hits.Load()
+
+	blobResp := anon.do(http.MethodGet, inst.primary+"/v2/blobs/"+configDigest, nil, nil)
+	requireStatus(t, blobResp, http.StatusOK, "unqualified blob after a manifest")
+	if body := readBody(blobResp); body != string(fx.configBody) {
+		t.Errorf("blob body differs from the fixture config")
+	}
+
+	// 3. It must have gone to the namespace that served the manifest — and only
+	// there. A hit on the other upstream means the blob was probed or guessed.
+	if got := otherUp.hits.Load(); got != beforeOther {
+		t.Errorf("blob request reached namespace %s, which never served this repository (%d -> %d)",
+			secondNS, beforeOther, got)
+	}
+	if got := dockerUp.hits.Load(); got <= beforeDocker {
+		t.Errorf("blob request never reached namespace %s (%d -> %d)", proxyNS, beforeDocker, got)
+	}
+}
+
+// TestUnqualifiedBlobWithUnknownDigestIsUnavailable pins the boundary for a blob
+// that follows no manifest: with no repository to be affined to, rms does not
+// know who owns the digest, so "not found" would be a claim it cannot back.
+// The answer must be 503, exactly as it is when no candidate can be probed.
+func TestUnqualifiedBlobWithUnknownDigestIsUnavailable(t *testing.T) {
+	fx := newFixture(t)
+	dockerUp := startFakeUpstream(t, fx, "library/demo", "v1")
+	otherUp := startFakeUpstream(t, fx, "owner/other", "v1")
+
+	inst := startRMSOpts(t, rmsOptions{
+		dockerUpstream:   dockerUp.url,
+		secondNSUpstream: otherUp.url,
+		healthEnabled:    true,
+		probeTimeout:     "2s",
+	})
+
+	// No manifest was read first: nothing is known about this digest. It is
+	// also not present in either upstream.
+	unknown := "sha256:" + strings.Repeat("0", 64)
+
+	anon := newClient(t)
+	resp := anon.do(http.MethodGet, inst.primary+"/v2/blobs/"+unknown, nil, nil)
+	requireStatus(t, resp, http.StatusServiceUnavailable, "unqualified blob with an unknown digest")
+	if code := firstErrorCode(t, resp); code != "UNAVAILABLE" {
+		t.Errorf("error code = %q, want UNAVAILABLE", code)
+	}
+}
+
+// firstErrorCode decodes the registry v2 error envelope a response carries.
+func firstErrorCode(t *testing.T, resp *http.Response) string {
+	t.Helper()
+
+	var out struct {
+		Errors []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
+	body := readBody(resp)
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("decode error envelope %q: %v", body, err)
+	}
+	if len(out.Errors) == 0 {
+		t.Fatalf("no errors in envelope %q", body)
+	}
+	return out.Errors[0].Code
 }
 
 // TestPushFlow exercises the upload sequence and, crucially, that the Location
@@ -771,105 +1199,15 @@ func TestDegradedServesCache(t *testing.T) {
 // warmed by one instance can be reused by another.
 func startRMSWithData(t *testing.T, upstreamURL, dataDir string) *rmsInstance {
 	t.Helper()
-
-	t.Setenv("HTTP_PROXY", "")
-	t.Setenv("HTTPS_PROXY", "")
-	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
-
-	dir := t.TempDir()
-	htpasswdFile := filepath.Join(dir, "htpasswd")
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("hash: %v", err)
-	}
-	adminHash, err := auth.HashPassword(adminPass)
-	if err != nil {
-		t.Fatalf("hash: %v", err)
-	}
-	body := fmt.Sprintf("%s:%s\n%s:%s\n", testUser, hash, adminUser, adminHash)
-	if err := os.WriteFile(htpasswdFile, []byte(body), 0o600); err != nil {
-		t.Fatalf("write htpasswd: %v", err)
-	}
-
-	primaryPort := freePort(t)
-	boundPort := freePort(t)
-	metricsPort := freePort(t)
-
-	cfgBody := fmt.Sprintf(`
-server:
-  listen: "127.0.0.1:%d"
-  http_secret: "e2e-secret"
-storage:
-  root: %q
-auth:
-  type: htpasswd
-  htpasswd: %q
-  user_namespace: true
-  shared_namespaces: [me]
-  anonymous_pull_proxy: true
-  admin_users: [%s]
-namespaces:
-  default: %s
-  proxy:
-    %s:
-      upstreams: [%q]
-      official_library: true
-      ttl: 0
-listeners:
-  - listen: "127.0.0.1:%d"
-    namespace: %s
-upstream:
-  health:
-    enabled: false
-    timeout: 2s
-  http:
-    proxy: ""
-    no_proxy: "127.0.0.1,localhost"
-observability:
-  logs:
-    level: error
-    format: json
-  traces:
-    enabled: false
-  metrics:
-    listen: "127.0.0.1:%d"
-`, primaryPort, dataDir, htpasswdFile, adminUser, proxyNS, proxyNS, upstreamURL, boundPort, proxyNS, metricsPort)
-
-	cfgPath := filepath.Join(dir, "rms.yaml")
-	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-
-	srv, err := app.Build(context.Background(), cfg, nil, server.Observability{})
-	if err != nil {
-		t.Fatalf("build app: %v", err)
-	}
-	if err := srv.Listen(); err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(15 * time.Second):
-		}
+	// healthEnabled is false because this variant exists to point rms at a
+	// dead upstream: with health checks on, the namespace would never finish
+	// building an engine and the cache-only path could not be exercised.
+	return startRMSOpts(t, rmsOptions{
+		dockerUpstream:   upstreamURL,
+		secondNSUpstream: upstreamURL,
+		dataDir:          dataDir,
+		probeTimeout:     "2s",
 	})
-
-	inst := &rmsInstance{
-		primary: fmt.Sprintf("http://127.0.0.1:%d", primaryPort),
-		docker:  fmt.Sprintf("http://127.0.0.1:%d", boundPort),
-		dataDir: dataDir,
-	}
-	waitReady(t, inst.primary+"/v2/", primaryPort)
-	return inst
 }
 
 // TestDockerClient drives the real CLI when explicitly requested: it is the only
@@ -915,5 +1253,66 @@ func TestDockerClient(t *testing.T) {
 	}
 	if out, err := run("push", host+"/"+testUser+"/demo:v1"); err != nil {
 		t.Fatalf("docker push failed: %v\n%s", err, out)
+	}
+}
+
+// TestNamespaceUpstreamRaceServesTheFastestMirror drives the whole path a
+// Docker daemon's registry-mirrors list uses: one unqualified request, one
+// namespace, two mirrors of it, and the requirement that the fastest one that
+// has the content serves it.
+//
+// The configured order deliberately puts the slow mirror first: with the
+// ordered election this deployment used to have, the first healthy upstream
+// would have won, and the point of the race is that it does not.
+func TestNamespaceUpstreamRaceServesTheFastestMirror(t *testing.T) {
+	fx := newFixture(t)
+	slow := startFakeUpstream(t, fx, "library/demo", "v1")
+	slow.delay = 200 * time.Millisecond
+	fast := startFakeUpstream(t, fx, "library/demo", "v1")
+
+	other := startFakeUpstream(t, fx, "owner/other", "v1")
+
+	inst := startRMSOpts(t, rmsOptions{
+		dockerUpstreams:  []string{slow.url, fast.url},
+		secondNSUpstream: other.url,
+		healthEnabled:    true,
+		probeTimeout:     "2s",
+	})
+
+	anon := newClient(t)
+	before := map[string]int64{slow.url: slow.hits.Load(), fast.url: fast.hits.Load()}
+
+	resp := anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil,
+		map[string]string{"Accept": "application/vnd.oci.image.manifest.v1+json"})
+	requireStatus(t, resp, http.StatusOK, "unqualified manifest through the raced namespace")
+	if body := readBody(resp); body != string(fx.manifest) {
+		t.Errorf("served manifest is not the fixture")
+	}
+
+	slowHits := slow.hits.Load() - before[slow.url]
+	fastHits := fast.hits.Load() - before[fast.url]
+
+	// Both mirrors were probed — that is the fan-out — but only the fast one
+	// also served the pull, which is the part that has to follow the race.
+	if slowHits == 0 || fastHits == 0 {
+		t.Fatalf("probes: slow=%d fast=%d, want both mirrors asked", slowHits, fastHits)
+	}
+	if fastHits <= slowHits {
+		t.Fatalf("served traffic: slow=%d fast=%d, want the fast mirror to serve the content", slowHits, fastHits)
+	}
+	t.Logf("mirror hits for one pull: slow=%d fast=%d", slowHits, fastHits)
+
+	// And the winner is cached for the probe TTL: the second request must not
+	// fan out again, so neither mirror's count jumps by the full probe set.
+	beforeSlow, beforeFast := slow.hits.Load(), fast.hits.Load()
+	resp = anon.do(http.MethodGet, inst.primary+"/v2/library/demo/manifests/v1", nil,
+		map[string]string{"Accept": "application/vnd.oci.image.manifest.v1+json"})
+	requireStatus(t, resp, http.StatusOK, "cached decision")
+	_ = readBody(resp)
+	if got := slow.hits.Load() - beforeSlow; got != 0 {
+		t.Errorf("the slow mirror was asked %d more times within the decision TTL, want 0", got)
+	}
+	if got := fast.hits.Load() - beforeFast; got == 0 {
+		t.Errorf("the fast mirror served the second request too, so the decision was reused")
 	}
 }

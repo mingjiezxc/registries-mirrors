@@ -1,0 +1,214 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "8f6218e6-677c-4cdd-a2a7-a3d49a0c7330",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "交付态冻结抓取 reports/raw/103-final-live-10ns.txt:26 里 ghcr.io=885.498ms(unreachable:upstream-status)，而 deploy/103/rms.yaml:85 已把官方 ghcr.io 排第一；同文件同一次抓取里 gcr.io=662.589ms(absent:auth-refused)（:26），同一官方匿名 token 端点对两个 namespace 给出不同类别，该文件没有为 ghcr.io 记任何异常。",
+      "matters": "yes"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:57 那段宣称「刻意的 5 个候选全部 absent，没有一个 unreachable」的决策日志节选，与 reports/raw/103-final-live-10ns.txt:26 交付态行矛盾（10 个候选里 dhi.io/gcr.io/ghcr.io 是带原因的 absent/unreachable）；引用停在增配前那一版。",
+      "matters": "no"
+    },
+    {
+      "what": "未命中缓存耗时口径仍不一致：reports/selection-verification.md:108 与 reports/103-selection-rollout.md:160 写 2.49–7.47s，而同一交付态抓取 reports/raw/103-final-live-10ns.txt:20-22 是 5.466/4.826/10.002s（已顶到 probe_timeout=10s）。",
+      "matters": "no"
+    },
+    {
+      "what": "任务书列的账本证据 e-gqu8jh/e-vjvdf4/e-qytva3/e-f44dno（refute）与 e-d23908/e-1qjwh9（inconclusive）在交付物里只以文字出现、没有正文，无法核对各自推翻/存疑的是哪条观测；账本里 n-u-i6k3wz.json:39 仍写「24 格里只有 2 格翻转」（逐格复算为 72 格中 6 格），据称的更正正文不在工作区。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "probe.go:336-356 把 401/403/404 判为答复、5xx/429/传输失败才不可达；TestAuthenticatedRefusalIsAbsence、TestDecideMistypedImageIsNotFound、TestServerErrorsAreNotAbsence 通过（副本内 go test -v ./internal/selection/ 42 PASS），103 交付态拼错仓库名回 404 NAME_UNKNOWN（103-final-live-10ns.txt:20-24）。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "只看 2xx 不足，按最终响应媒体类型确认（probe.go 2xx 分支调 looksLikeContent）；TestARedirectToAWebPageIsNotAManifest、TestHTMLWith200IsNotAManifest、TestARealManifestMediaTypeStillCounts、TestBlobRedirectIsJudgedByWhatItDelivers 均 PASS；103 交付态 dhi.io 记 absent:not-manifest-content:text/html。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "chooser_test.go:1873-1906 TestDecideBlobInRepoAsksTheBlobPath 断言上游实际收到 `/v2/library/busybox/blobs/<digest>` 且不含 /manifests/，副本内该用例 PASS；dispatcher 对带仓库名 blob 走 DecideBlobInRepo（dispatch.go decideProxy 字节分流）。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "pick 仅当无人答复才 ErrUnreachable，有人明确答复即 ErrNotFound（probe.go:714-736）；dispatch_test.go:1203-1259 四象限用例与 TestUnqualifiedAllUnreachable 在副本内 PASS，TestUnqualifiedPicksNamespaceWithContent 的「缺 tag → 404 NAME_UNKNOWN」亦 PASS。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "现场确实先按镜像优先配置、被决策行否证后改为官方优先：deploy/103/rms.yaml ghcr.io/gcr.io/quay.io/registry.k8s.io 现为 [官方, daocloud]（:85-95），docker.io 把 daocloud 排最后（:75-77）；103-daocloud-namespaces-verify.txt:15 记 20MB layer 经 ghcr daocloud 镜像 110.5s。"
+    }
+  ],
+  "basis": "交付成立：六条判据逐条核过。①internal/selection 并发 HEAD 探测各候选（probe.go:353 `http.MethodHead`、228-241 每候选一 goroutine）、只认 2xx 且像 registry 内容、最快者胜（pick 714-748），跑完 42 个选择用例全通过，含并发时间差 3µs<50ms（chooser_test.go:536）、token 重试、TTL、404/503 两种错误语义；②Namespaces 结构体只剩 Local/Proxy/Selection（config.go:155-163），全仓无 yaml:\"default\"/\"listeners\"/\"anonymous_root\"，raw 原文显示旧键令新二进制严格解码报错，dispatcher 按选择结果转发并按需重选一次（dispatch.go:145-151、tryReselect 仅 GET/HEAD）；③config、deploy/103 的 yml/.env、internal、cmd、test、README 里 15000–15006 零命中（仅 deploy/103/README.md 迁移对照表 9-15/45/56/109/173/178），Dockerfile:54 EXPOSE 5000 9100，两宿主只发布 5000/9100；④e2e `TestUnqualifiedPicksNamespaceWithContent`（A 有 B 无命中 A、缺 tag→404 NAME_UNKNOWN）与 `TestUnqualifiedAllUnreachable`（→503 UNAVAILABLE）在副本里 PASS；⑤副本复跑 make check EXIT=0、race 两包 ok、e2e 11 RUN（10 PASS+1 SKIP）0 FAIL；⑥reports/103-selection-rollout.md 落盘齐全，交付态 10 候选抓取含端口、缓存 200、404 NAME_UNKNOWN、503 包络与逐候选耗时，`TestLogsARealServerErrorAsUnreachable` 通过。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 32
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 55
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 92
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 108
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 43
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 56
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 89
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 107
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 24
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 29
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 5
+    },
+    {
+      "path": "reports/raw/101-and-103-published-ports.txt",
+      "line": 8
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 58
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 46
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 36
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 353
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 404
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 721
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 58
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 536
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1899
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 155
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 146
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 421
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 761
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 795
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 75
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 85
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "Dockerfile",
+      "line": 54
+    },
+    {
+      "path": "README.md",
+      "line": 378
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 32
+    }
+  ],
+  "card": "交付成立：六条判据逐条核过。①internal/selection 并发 HEAD 探测各候选（probe.go:353 `http.MethodHead`、228-241 每候选一 goroutine）、只认 2xx 且像 registry 内容、最快者胜（pick 714-748），跑完 42 个选择用例全通过，含并发时间差 3µs<50ms（chooser_test.go:536）、token 重试、TTL、404/503 两种错误语义；②Namespaces 结构体只剩 Local/Proxy/Selection（config.go:155-163），全仓无 yaml:\"default\"/\"listeners\"/\"anonymous_root\"，raw 原文显示旧键令新二进制严格解码报错，dispatcher 按选择结果转发并按需重选一次（dispatch.go:145-151、tryReselect 仅 GET/HEAD）；③config、deploy/103 的 yml/.env、internal、cmd、test、README 里 15000–15006 零命中（仅 deploy/103/README.md 迁移对照表 9-15/45/56/109/173/178），Dockerfile:54 EXPOSE 5000 9100，两宿主只发布 5000/9100；④e2e `TestUnqualifiedPicksNamespaceWithContent`（A 有 B 无命中 A、缺 tag→404 NAME_UNKNOWN）与 `TestUnqualifiedAllUnreachable`（→503 UNAVAILABLE）在副本里 PASS；⑤副本复跑 make check EXIT=0、race 两包 ok、e2e 11 RUN（10 PASS+1 SKIP）0 FAIL；⑥reports/103-selection-rollout.md 落盘齐全，交付态 10 候选抓取含端口、缓存 200、404 NAME_UNKNOWN、503 包络与逐候选耗时，`TestLogsARealServerErrorAsUnreachable` 通过。",
+  "created_at": 1791865094498,
+  "evaluator": "independent"
+}

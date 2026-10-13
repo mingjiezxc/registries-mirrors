@@ -55,14 +55,48 @@ auth:
   admin_users: [admin]
 
 namespaces:
-  # Unqualified requests fall back here, implementing
-  #   <host>:5000/<user>/<image>  ->  <host>:5000/docker.io/<user>/<image>
-  default: docker.io
+  # There is no default namespace. A request whose path names no configured
+  # namespace — GET /v2/library/alpine/manifests/latest — is resolved by probing
+  # every proxy namespace below, and every upstream of each of them,
+  # concurrently, and serving it from the fastest one that really has the
+  # repository:
+  #   <host>:5000/library/alpine  ->  whichever of docker.io/ghcr.io/... has it
+  # A request that does carry a namespace prefix (docker.io/library/alpine) is
+  # not probed across namespaces — the client named one — but its upstreams are
+  # still raced among themselves.
+  selection:
+    # How long one decision is reused for the same (repository, reference)
+    # before it is probed again. It is also the repository-affinity window: a
+    # blob request carries no repository name, so it follows the decision made
+    # for the manifest of the same repository, and that entry expires here too.
+    probe_ttl: 30s
+    # Upper bound for one candidate probe, and therefore also for how long a
+    # request waits for the decision when nothing is cached.
+    probe_timeout: 10s
+    # Soft deadline on the whole decision: armed by the first probe that
+    # answers, after which the decision proceeds with what it has. 0 waits for
+    # every probe. Probes that miss it are never treated as an answer — a
+    # mirror that stayed silent must not decide that a repository is absent.
+    # Must not exceed probe_timeout.
+    decision_deadline: 0s
+    # How the upstreams of a namespace share the traffic when they serve
+    # identical content: weighted (1/latency, the default), round_robin, or off
+    # (the fastest one serves until the decision is refreshed).
+    balance: weighted
+    # How much slower than the fastest eligible upstream an upstream may be and
+    # still be balanced to, as a multiplier. 1.5 means "within 50%".
+    balance_window: 1.5
 
   proxy:
     docker.io:
-      # Tried in order; the first reachable endpoint is elected and re-elected
-      # automatically when it fails.
+      # Raced concurrently by default: every endpoint is probed for the
+      # repository being served, the fastest one that really has it wins, and
+      # endpoints that agree on the content digest share the load. The order
+      # below is the *authority* order: the first endpoint that answers defines
+      # what the reference's bytes are, and a mirror that disagrees with it is
+      # neither served nor balanced. Set `upstream_race: false` on this
+      # namespace to go back to the old ordered election (first healthy wins,
+      # failover rebuilds the engine).
       #
       # To prefer an existing mirror instead of Docker Hub directly, put it
       # first. Note that an internal mirror is only reachable from the host that
@@ -89,18 +123,11 @@ namespaces:
     registry.k8s.io:
       upstreams: ["https://registry.k8s.io"]
 
-# Additional listeners. A listener bound to a namespace serves that namespace
-# with no namespace in the path, which is what containerd's registries.yaml and
-# docker's registry-mirrors require -- neither can express a path between /v2/
-# and the repository name.
-listeners:
-  # Restates the primary listener; kept explicit for readability.
-  - listen: "0.0.0.0:5000"
-    namespace: ""
-  - listen: "0.0.0.0:5001"
-    namespace: docker.io
-  - listen: "0.0.0.0:5002"
-    namespace: ghcr.io
+# There are no per-namespace listeners. The port-per-upstream scheme (and the
+# `anonymous_root` switch that came with it) is gone: rms exposes the primary
+# endpoint plus the metrics endpoint, and unqualified requests pick their
+# namespace themselves. See the README for what that costs clients that can only
+# be pointed at a bare host:port.
 
 upstream:
   health:

@@ -1,0 +1,6 @@
+{
+  "gloss": "选定服务 namespace 之后对客户端写回的结果：全都不存在时是 404 NAME_UNKNOWN，全部不可达时是 503 UNAVAILABLE。",
+  "id": "selection_outcome",
+  "kind": "phenomenon",
+  "label": "选择结果包络"
+}

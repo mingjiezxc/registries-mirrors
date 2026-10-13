@@ -1,0 +1,10 @@
+{
+  "basis": "实测 401、3.6s",
+  "id": "up_ghcr_io",
+  "label": "https://ghcr.io",
+  "provenance": {
+    "kind": "named",
+    "ref": "curl https://ghcr.io/v2/"
+  },
+  "type": "upstream"
+}

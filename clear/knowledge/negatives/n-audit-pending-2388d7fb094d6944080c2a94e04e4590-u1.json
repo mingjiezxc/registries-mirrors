@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-2388d7fb094d6944080c2a94e04e4590-u1",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "验收证据的候选数与交付态不一致且未登记：交付态为 10 个 proxy namespace（deploy/103/rms.yaml:57-135），而 criterion ⑥ 所依据的 404/503 包络与探测耗时全部是 5 候选抓取（reports/raw/103-final-live.txt:14、:39-58；reports/raw/103-selection-rollout-live.txt），全库 source=probe 决策日志 9 条无一为 candidates=10。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者说得对：判据⑥原来的证据取自 5 候选时期。已在**交付态**（10 个 proxy namespace、镜像 `9d528ac26182`）重抓一份 `reports/raw/103-final-live-10ns.txt`：§1 是 10 条 `rms_namespace_up`；§2 是未命中缓存的无限定请求（404 NAME_UNKNOWN，三次 3.83/2.57/3.00s）与**含 10 个候选逐项耗时**的完整决策行；§3 是 503 包络（含 `detail:null`）；§4 已缓存镜像 200（0.905s，`source=cache`，`candidates=10`）；§5 无仓库名 blob 200；§6 旧端口拒连、`/v2/` 401、`readyz`。上线记录里判据⑥的原始抓取指针已改为这份文件，并把 `103-final-live.txt` 标注为「增配前（5 候选）」。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:2388d7fb094d6944080c2a94e04e4590#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791861002606,
+  "updated": 1791862477398
+}

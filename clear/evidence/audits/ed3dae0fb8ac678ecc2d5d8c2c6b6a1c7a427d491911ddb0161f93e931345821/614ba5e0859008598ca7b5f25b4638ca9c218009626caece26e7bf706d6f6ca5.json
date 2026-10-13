@@ -1,0 +1,358 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "98841910-5ecb-4e0a-b9f0-0501d6e54d97",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [
+    {
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "basis": "probe.go:130-183/205-265 与 resolve 的 goroutine 扇出对每个候选走真实内容路径；唯一存在的候选有专测 TestDecidePicksTheOnlyCandidateThatHasTheRepo，五候选全 absent 的 404 有 chooser_test.go:766 与 103 实测；未出现「可用却探测失败」或「有镜像未选中」（103 决策行 dhi.io 的 HTML 被 absent:not-manifest-content:text/html 拦下）。"
+    },
+    {
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "basis": "单测两个各 150ms 候选 skew 3µs、总耗时 151ms；真实上游复算 proxy spread 中位 0.152ms/最大 0.405ms、压缩比中位 3.53x，direct 0.145ms/3.80x（我从 .probe/selection/raw-*.jsonl 复算与 stats 文件逐字相符），远未达到「差值 ≥ 第一个候选响应延迟」的推翻条件。"
+    },
+    {
+      "hypothesis": "h-7yrf0w",
+      "verdict": "support",
+      "basis": "103 交付态抓取 §2 三次 404 且响应体为 NAME_UNKNOWN（非 503、非 200）；单测 TestDecideDistinguishesNotFoundFromUnreachable 与 e2e 子用例「a missing tag is NAME_UNKNOWN, not UNAVAILABLE」均绿；无回落默认仓库（namespaces.default 已从结构体删除）。"
+    },
+    {
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "basis": "副本重跑 make check EXIT=0 且 e2e 全绿（TestLoginContract/TestPushFlow/TestAuthorisationMatrix 的 catalog 用例/TestDegradedServesCache 均 PASS，TestDockerClient 非 harness 失败而是需 RMS_E2E_DOCKER 的 SKIP）；103 上线服务在运行、readyz=ready、10 条 namespace_up=1、:5000/v2/ 仍 401 挑战。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "账本里 verdict=refute 的 evidence e-gqu8jh（及 e-vjvdf4、e-d23908）在工作区与副本中零命中，记录中无人能说明它推翻的是哪条观测；worker 已把它交给人（n-audit-pending-1b878123…-u2.json:33），本轮仍无内容可核。",
+      "matters": "unclear"
+    },
+    {
+      "what": "四条判断的 uses（x-h-nccqnt、n-u-s01do2、n-u-iiyp8u、n-u-l136s0、n-u-fl1myg、n-u-l29jwy）在 clear/goals/g-mv5eqq0n96w2.md:17-32 全为 out_of_scope，而 reports/selection-verification.md:63-67 仍以它们为「与已有条目的关系」的依据；修复所声称的两份 Hindsight Correction 正文在工作区不可见，前轮评估在 103:18888 该 bank 亦查为 0 篇。",
+      "matters": "no"
+    },
+    {
+      "what": "判据⑥的 404/503 包络与决策日志（reports/103-selection-rollout.md:55-59、65、74）取自增配前 5 候选抓取，交付态为 10 候选（deploy/103/rms.yaml 10 个 proxy namespace，config/rms.yaml 仍 5 个）；报告在 §四已注明来源，但对真存于官方 ghcr/gcr 的镜像本轮未做真实内容探测。",
+      "matters": "no"
+    },
+    {
+      "what": "worker 答案里「交付态」耗时写作 2.48–3.93s 与已缓存 0.711s，其所引 reports/raw/103-final-live-10ns.txt:20-22、32 的现值是 2.479854/3.930431s 与 0.710938s（四舍五入后一致），而答案另一处又给 0.905s，同一份抓取在答案内被写成两组数。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "probe.go:294-440 现为三分类（2xx=存在；认证走完的 401/403/404/400/410=明确不存在；5xx/429/传输失败/超时/无当选上游=没能答复），TestDecideMistypedImageIsNotFound 钉住 401/403 型拒绝仍判 404，103 实测拼错名返 404（103-final-live-10ns.txt:19-26）；照此做确实避免「每个未命中请求变 503」。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "probe.go 对 2xx 追加 looksLikeContent(kind, contentType)（manifest 须 JSON 系、blob 非 HTML），TestARedirectToAWebPageIsNotAManifest/TestHTMLWith200IsNotAManifest/TestARealManifestMediaTypeStillCounts 全绿，103 决策行 dhi.io=…(absent:not-manifest-content:text/html) 与「dhi.io 不再抢走选择」记录一致。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "DecideBlobInRepo（probe.go:157）把带仓库名 blob 的探测路径改为 /v2/<repo>/blobs/<digest>，TestDecideBlobInRepoAsksTheBlobPath 断言上游实收路径，TestBlobAndManifestDecisionsDoNotShareACacheKey 隔离缓存；缺陷与 404 现象有落盘记录（103-final-live.txt §4 修复后 200）。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "pick() 只在无一候选给出答案时 ErrUnreachable，否则 ErrNotFound；TestAFailingCandidateStillLosesToAnAnswer 与 TestDecideMistypedImageSurvivesOneNamespaceDown 与 103 上「拼错名先 503 后改 404」的记录一致，且「无人答才 503」在 dispatcher 侧有 TestUnqualifiedRequestUnreachableIsTransportOnly。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "deploy/103/rms.yaml 对 ghcr/gcr/quay/registry.k8s.io 改为官方在前镜像兜底、docker.io 把 daocloud 排最后；103 决策行由镜像优先时的 unreachable:upstream-status 变为官方优先后的 absent:auth-refused，另有 daocloud 大 blob 302 到 R2 卡 60s 与 token 绑 IP 的实测记录，正是「先量真实内容再定序、别信探活」。"
+    }
+  ],
+  "basis": "交付持有：判据①—⑥逐条在盘上可核。①internal/selection（chooser.go/probe.go + 42 个单测）「并发探测、只认 2xx 且像 registry 内容、Bearer token 重试、probe_ttl 缓存、ErrNotFound/ErrUnreachable 两种语义」齐全，我在副本重跑 make check EXIT=0、race ok（selection 1.830s / server 6.141s）、e2e 顶层 11 RUN（10 PASS＋1 SKIP，TestDockerClient 因需 daemon）0 FAIL，与 raw 逐行一致；②严格解码实测 `field default not found in type config.Namespaces` 与 `field listeners not found in type config.Config`（我在副本用现源码复现同样两行），dispatcher 按选择结果转发、404 NAME_UNKNOWN 与 503 UNAVAILABLE 两分支有 e2e 与 dispatcher 用例，reselect 限 GET/HEAD 且最多一次；③15000–15006 在工作区命中只在 deploy/103/README.md 迁移表与说明，compose/.env 只剩 5000/9100，根 README 第 90/94 行与实测一致；④TestUnqualifiedPicksNamespaceWithContent（A 有 B 没有→命中 A，另有缺 tag→404 NAME_UNKNOWN）、TestUnqualifiedAllUnreachable（503 UNAVAILABLE）均在且全绿；⑤门禁三项全绿；⑥交付态现场抓取 103-final-live-10ns.txt 有端口清单、401 挑战、已缓存 200、404 包络、503 包络与 10 候选逐项耗时。仅两处转写小瑕（答案里 2.48–3.93s/0.711s 与所引抓取的现值 2.479854–3.930431s/0.710938s 略有出入；⑥部分读数取自增配前 5 候选抓取并在报告中注明），不动摇判据。",
+  "shortfalls": [
+    {
+      "criterion": "⑥ 103 上重新部署并留下证据……写入 reports/103-selection-rollout.md",
+      "what": "reports/103-selection-rollout.md:54 与 :158 记「6 次测量落在 2.49–7.47s」，而判据⑥自身指向的交付态抓取 reports/raw/103-final-live-10ns.txt:20-22 未命中缓存为 2.479854/2.479854/3.930431s、§4 已缓存为 0.710938s；答案 q1 又写 0.905s。",
+      "missing": "把「探测耗时/已缓存耗时」的引用与 103-final-live-10ns.txt 现值对齐（或在报告中说明这些区间属于哪份抓取），另把答案里的 0.711s/0.905s 与抓取对齐。"
+    },
+    {
+      "criterion": "⑥ ……404 与 503 包络……（交付态一致性）",
+      "what": "reports/103-selection-rollout.md:55-59、65、74 的 404 决策日志（candidates=5）与 503 包络取自增配前 5 候选抓取（reports/raw/103-final-live.txt），交付态是 10 候选（deploy/103/rms.yaml 10 个 proxy namespace、config/rms.yaml 仍 5 个）；503 的现场观测只有「无法判定归属」一条分支。",
+      "missing": "在交付态（10 候选）抓一次 503 的状态行＋响应体，或明确标注该 503/404 观测属增配前并说明候选数不影响该分支。"
+    }
+  ],
+  "refs": [
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 22
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 27
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 32
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 3
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 46
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 12
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 27
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 41
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 131
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 158
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 29
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 32
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 44
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 27
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 40
+    },
+    {
+      "path": "reports/raw/103-child-manifest-and-blob.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/103-mirror-pull-and-affinity.txt",
+      "line": 5
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 35
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 46
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 55
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 62
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 67
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 34
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 43
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 55
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 62
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 77
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 85
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 90
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 94
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 130
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 157
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 205
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 294
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 380
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 714
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 514
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 933
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1208
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1311
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 141
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 419
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 495
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 564
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 808
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 163
+    },
+    {
+      "path": "config/rms.yaml",
+      "line": 65
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 49
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 32
+    },
+    {
+      "path": "docker-compose.yml",
+      "line": 51
+    },
+    {
+      "path": ".env",
+      "line": 15
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "README.md",
+      "line": 248
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 14
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 31
+    },
+    {
+      "path": "reports/raw/101-real-client-and-blob-fix.txt",
+      "line": 14
+    }
+  ],
+  "card": "交付持有：判据①—⑥逐条在盘上可核。①internal/selection（chooser.go/probe.go + 42 个单测）「并发探测、只认 2xx 且像 registry 内容、Bearer token 重试、probe_ttl 缓存、ErrNotFound/ErrUnreachable 两种语义」齐全，我在副本重跑 make check EXIT=0、race ok（selection 1.830s / server 6.141s）、e2e 顶层 11 RUN（10 PASS＋1 SKIP，TestDockerClient 因需 daemon）0 FAIL，与 raw 逐行一致；②严格解码实测 `field default not found in type config.Namespaces` 与 `field listeners not found in type config.Config`（我在副本用现源码复现同样两行），dispatcher 按选择结果转发、404 NAME_UNKNOWN 与 503 UNAVAILABLE 两分支有 e2e 与 dispatcher 用例，reselect 限 GET/HEAD 且最多一次；③15000–15006 在工作区命中只在 deploy/103/README.md 迁移表与说明，compose/.env 只剩 5000/9100，根 README 第 90/94 行与实测一致；④TestUnqualifiedPicksNamespaceWithContent（A 有 B 没有→命中 A，另有缺 tag→404 NAME_UNKNOWN）、TestUnqualifiedAllUnreachable（503 UNAVAILABLE）均在且全绿；⑤门禁三项全绿；⑥交付态现场抓取 103-final-live-10ns.txt 有端口清单、401 挑战、已缓存 200、404 包络、503 包络与 10 候选逐项耗时。仅两处转写小瑕（答案里 2.48–3.93s/0.711s 与所引抓取的现值 2.479854–3.930431s/0.710938s 略有出入；⑥部分读数取自增配前 5 候选抓取并在报告中注明），不动摇判据。",
+  "created_at": 1791863779719,
+  "evaluator": "independent"
+}

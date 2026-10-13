@@ -1,0 +1,69 @@
+############ 拉取前基线 2026年 10月 12日 星期一 22:53:17 CST ############
+--- docker.io 缓存体积(字节)/文件数 ---
+44161748665	/opt/stacks/rms/data/docker.io
+5377
+--- alpine tags ---
+3.12 3.14 3.15 3.16 3.17 3.18.2 3.19 3.20 latest 
+--- 指标 ---
+rms_cache_hits_total{namespace="docker.io"} 14
+rms_cache_misses_total{namespace="docker.io"} 27
+rms_http_requests_total{listener="docker.io",method="GET",namespace="docker.io",status="200"} 29
+rms_http_requests_total{listener="docker.io",method="GET",namespace="none",status="200"} 9
+rms_http_requests_total{listener="docker.io",method="HEAD",namespace="docker.io",status="200"} 7
+rms_namespace_up{namespace="docker.io"} 1
+rms_namespace_up{namespace="gcr.io"} 1
+rms_namespace_up{namespace="ghcr.io"} 1
+rms_namespace_up{namespace="quay.io"} 1
+rms_namespace_up{namespace="registry.k8s.io"} 1
+############ 8 个端口的原始 HTTP 响应 ############
+----- curl -si http://192.168.188.103:5000/v2/ -----
+HTTP/1.1 401 Unauthorized
+Docker-Distribution-Api-Version: registry/2.0
+Www-Authenticate: Basic realm="rms"
+----- curl -si http://192.168.188.103:15000/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15001/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15002/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15003/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15004/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15005/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://192.168.188.103:15006/v2/ -----
+HTTP/1.1 200 OK
+Docker-Distribution-Api-Version: registry/2.0
+############ 宿主监听与容器状态 ############
+LISTEN 0      4096         0.0.0.0:15000      0.0.0.0:*    users:(("docker-proxy",pid=1944817,fd=4))              
+LISTEN 0      4096         0.0.0.0:15001      0.0.0.0:*    users:(("docker-proxy",pid=1944831,fd=4))              
+LISTEN 0      4096         0.0.0.0:15002      0.0.0.0:*    users:(("docker-proxy",pid=1944845,fd=4))              
+LISTEN 0      4096         0.0.0.0:15003      0.0.0.0:*    users:(("docker-proxy",pid=1944866,fd=4))              
+LISTEN 0      4096         0.0.0.0:15004      0.0.0.0:*    users:(("docker-proxy",pid=1944881,fd=4))              
+LISTEN 0      4096         0.0.0.0:15005      0.0.0.0:*    users:(("docker-proxy",pid=1944897,fd=4))              
+LISTEN 0      4096         0.0.0.0:15006      0.0.0.0:*    users:(("docker-proxy",pid=1944912,fd=4))              
+LISTEN 0      4096         0.0.0.0:5000       0.0.0.0:*    users:(("docker-proxy",pid=1944788,fd=4))              
+LISTEN 0      4096         0.0.0.0:9100       0.0.0.0:*    users:(("docker-proxy",pid=1944802,fd=4))              
+LISTEN 0      4096            [::]:15000         [::]:*    users:(("docker-proxy",pid=1944824,fd=4))              
+LISTEN 0      4096            [::]:15001         [::]:*    users:(("docker-proxy",pid=1944838,fd=4))              
+LISTEN 0      4096            [::]:15002         [::]:*    users:(("docker-proxy",pid=1944856,fd=4))              
+LISTEN 0      4096            [::]:15003         [::]:*    users:(("docker-proxy",pid=1944873,fd=4))              
+LISTEN 0      4096            [::]:15004         [::]:*    users:(("docker-proxy",pid=1944890,fd=4))              
+LISTEN 0      4096            [::]:15005         [::]:*    users:(("docker-proxy",pid=1944905,fd=4))              
+LISTEN 0      4096            [::]:15006         [::]:*    users:(("docker-proxy",pid=1944919,fd=4))              
+LISTEN 0      4096            [::]:5000          [::]:*    users:(("docker-proxy",pid=1944795,fd=4))              
+LISTEN 0      4096            [::]:9100          [::]:*    users:(("docker-proxy",pid=1944809,fd=4))              
+
+rms | Up 20 minutes (healthy) | 0.0.0.0:5000->5000/tcp, :::5000->5000/tcp, 0.0.0.0:9100->9100/tcp, :::9100->9100/tcp, 0.0.0.0:15000-15006->15000-15006/tcp, :::15000-15006->15000-15006/tcp, 5001-5002/tcp
+Health=healthy Restarts=0
+
+ready
+
+ok

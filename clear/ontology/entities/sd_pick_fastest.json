@@ -1,0 +1,11 @@
+{
+  "id": "sd_pick_fastest",
+  "label": "挑最快候选的选择决策",
+  "type": "selection_decision",
+  "basis": "s2 的检验靶子：README/计划里「并发探测、只认 2xx、取探测耗时最小者」这一次决策",
+  "provenance": {
+    "kind": "named",
+    "ref": "internal/selection/chooser.go"
+  },
+  "note": "口径：exists = 候选当前当选上游对 /v2/<repo>/manifests/<ref> 返回 2xx；winner = 其中探测耗时最小者，并列取名字序。"
+}

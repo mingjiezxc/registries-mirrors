@@ -1,0 +1,563 @@
+reports/raw/selection-real-upstream.txt
+真实上游并发探测实测 —— s5 的原始读数（独立于被测代码）
+========================================================================
+
+【执行环境】主机 192.168.188.101（开发机 / SASE 网关），Go 1.27，出口代理
+HTTP_PROXY=HTTPS_PROXY=http://192.168.188.1:3128（`source scripts/env.sh`）。
+本任务只读网络，未接触 192.168.188.103 上的任何容器或配置。
+注意：本文件所有数字来自 101 的出口路径；103 的出口路径可能不同，
+103 上的耗时排序需在 103 上另跑一次，不能把这里的排名直接搬过去。
+
+【被测对象】抉择器的探测行为：对每个候选上游并发发
+HEAD <upstream>/v2/<repo>/manifests/<ref>，User-Agent: rms/selection-probe，
+单个探测超时 10s（namespaces.selection.probe_timeout 的默认值），
+401 时按 WWW-Authenticate 取 Bearer token 重试一次，2xx 才算「存在」。
+
+【程序】两个独立小程序，**都不 import rms 任何内部包**（避免与被测代码同源）：
+  .probe/selection/main.go          并发整轮探测，产出逐次读数与并发压缩比
+  .probe/selection/tokenwalk/main.go 单条认证路径逐步走（HEAD#1 → token → HEAD#2）
+
+  重跑：
+    source scripts/env.sh
+    go run .probe/selection/main.go -mode=proxy  -rounds=3 -out .probe/selection/raw-proxy.jsonl
+    go run .probe/selection/main.go -mode=proxy  -rounds=3 -noaccept -out .probe/selection/raw-noaccept.jsonl
+    go run .probe/selection/main.go -mode=direct -rounds=3 -out .probe/selection/raw-direct.jsonl
+    go run .probe/selection/tokenwalk/main.go -case=both -rounds=3 -mode=proxy > .probe/selection/tokenwalk-proxy.txt
+    python3 .probe/selection/mkreport.py
+
+【规模】main 程序：6 候选 × 4 组目标 × 3 轮 × 2 种出网设置 = 144 次探测；
+tokenwalk：11 个 (候选,仓库) 组合 × 3 轮 = 33 条完整认证路径。
+  - shared        : 所有候选都问 library/alpine:latest（无限定名的真实场景）
+  - shared-absent : 所有候选都问 library/definitely-does-not-exist-rms-probe:latest
+  - native        : 每个候选问一个**确实存在于它自己上面**的仓库
+                    (docker.1ms.run & registry-1.docker.io: library/alpine；
+                     ghcr.io: astral-sh/uv；gcr.io: distroless/static；
+                     quay.io: prometheus/busybox；registry.k8s.io: pause:3.9)
+  - native-absent : 每个候选问同前缀下的不存在仓库
+  native / native-absent 是判别力的对照实验：如果只有 Docker Hub 那两组能测出
+  「存在」，就无法排除「非 Hub 候选恒被判 absent」的伪结论。
+
+【表里 token 列的含义】`-` = 没有走到 token 流程（首个 HEAD 不是 401，或探测
+在传输层就断了）；`T200` = 调用了 token 端点且它回 200；`T403` = 调用了 token
+端点但被它 403 拒了（此时 **没有** 拿到 token，也就没有 HEAD#2）。这个区分很
+重要：`token_flow=false` 只说明「没拿到票」，不说明「没去取票」。
+
+
+========================================================================
+一、结论（先看这一段）
+========================================================================
+
+1) 判别力成立：6 个候选在 native 组**都** 3/3 轮返回 2xx 被判 exists，
+   在 native-absent 组都判 absent（tokenwalk 的 contrast 组逐条复核过：
+   ghcr.io/astral-sh/uv、gcr.io/distroless/static、quay.io/prometheus/busybox、
+   registry.k8s.io/pause 全部 200）。三类结果在实测里都被真实触发：
+   - 存在   = 2xx
+   - 不存在 = 404 或 403（认证走完后）
+   - 不可达 = 传输层错误 / 超时 / **认证没走通**（见第 6 条与第五节）
+
+2) 同一个无限定名在不同候选上的判定确实不同，这正是抉择器要利用的信号：
+   proxy 模式 shared 组 3/3 轮一致 —— library/alpine 只有 Docker Hub 系两个候选
+   判 exists（200），ghcr.io / gcr.io / quay.io 判 401、registry.k8s.io 判 404。
+
+3) 并发压缩比：一轮里 6 个探测的发出时刻极差（spread）中位 0.15ms、
+   最大 0.4ms（proxy，direct 最大 0.5ms），几乎同时出发。
+   以「串行耗时之和 ÷ 实际墙钟」计的压缩比：
+     proxy  2.80x ~ 4.68x（中位 3.53x）
+     direct 3.00x ~ 4.25x（中位 3.80x）
+   串行对照：proxy 一轮 6 次探测合计中位 15.4s → 并发后墙钟中位 4.3s；
+   direct 合计中位 37.4s → 并发后中位 10.0s。
+   注意分子分母的口径：串行之和用的是**总耗时**（含 token 往返），墙钟用的是
+   整轮真实墙钟，所以比率略低于「候选数 6」。
+
+4) 10s 的 probe_timeout 是**天花板而不是余量**：本批次 proxy 12 轮里 0 轮、
+   direct 12 轮里 9 轮墙钟打满 10001ms（direct 更容易顶到上限，因为直连更慢、
+   超时更多）。未命中缓存时，一次无限定请求的等待上限确实由 probe_timeout 决定
+   （与配置口径一致），而它**真的会被用满**。
+
+5) 走代理 vs 直连是**两个方向都有**的差异：
+   - 对国内镜像 docker.1ms.run，直连快得多（native 组中位
+     1812ms 走代理 vs 449ms 直连，
+     约 4.0 倍），走代理是负优化；
+   - 对海外上游直连要么更慢要么直接失败：registry-1.docker.io 直连 12 次里
+     2 次 unreachable、走代理 0 次，
+     直连原文含 `read tcp ...:443: read: connection reset by peer` 与 `context deadline exceeded`；
+     quay.io 直连也有 2 次 unreachable（走代理 0 次）。
+   - token 流程成功率同步变化：proxy 51/72 次探测走到了 token 端点、
+     36 次拿到票；direct 分别为 49/72 与 26 次。
+
+6) **认证路径的三态**（Lead 追问的口径问题，逐条读数在第五节）：对
+   library/alpine:latest，6 个候选分成三类，而不是「都是 401」：
+     docker.1ms.run        401 → token 200 → HEAD#2 200   存在
+     registry-1.docker.io  401 → token 200 → HEAD#2 200   存在
+     ghcr.io               401 → token **403**，拿不到票   认证未走通
+     gcr.io                401 → token **403**，拿不到票   认证未走通
+     quay.io               401 → token 200 → HEAD#2 **401** 认证未走通
+     registry.k8s.io       **404**（根本没有挑战）         明确不存在
+   这意味着：如果把「401/403 → absent（404）」当成一条铁律，ghcr.io / gcr.io /
+   quay.io 三个上游的**认证故障**会被读成「明确没有这个镜像」。ghcr.io 的对照
+   读数说明这不是「上游整体坏了」而是**按仓库拒绝**（同一时刻 astral-sh/uv 的
+   token 端点 3/3 次回 200、HEAD#2 3/3 次 200），但它仍然是「权限判决」而不是
+   「存在性判决」——私有的同名仓库会得到同样的 403。是否把这一态并入 absent
+   是 dispatcher 的设计选择，本文件只给读数：**这一态不是 404 的证据**。
+
+7) 一个必须在设计里承认的限制：对 ghcr.io / gcr.io，「不存在」与「存在但私有」
+   在匿名探测下无法区分（都是 token 端点 403）；对 quay.io，拿到票之后仍 401
+   同样无法区分「不存在」与「无权限」。而 Docker Hub 反过来：不存在的仓库回
+   401 而不是 404（shared-absent / native-absent 里 registry-1.docker.io 3/3 轮
+   都是 401(T200)）。所以「401 → absent」对 Hub 是必需的，对其它上游则过宽。
+
+8) 内容协商对照（补测，第八节）：本文件的探针**默认就带** 4 个 manifest media type 的
+   Accept（.probe/selection/main.go 的 acceptHeaders，第 91 行），所以第二至七节的读数
+   本来就是「带 Accept」那一列。为了回答「那些 401/404 会不会是内容协商造成的假 absent」，
+   另用 -noaccept 跑了第二遍：按 (组, 候选) 逐格比对两遍的状态，**有 6 格翻转**（ghcr.io 与 gcr.io 两个候选 × native 组 3 轮 = 6 格；两边合计 12 组 × 6 候选 × 2 遍 = 144 个观测（.probe/selection/raw-proxy.jsonl 与 raw-noaccept.jsonl 各 12 条记录 × 每条 6 个候选，复算得 72+72=144），翻转 6 格）——
+   ghcr.io 与 gcr.io 的 native 组各 3 轮都从 200 变 404（早先本节写作「只有 2 格」，与逐轮表不符，
+   2026-10-13 按 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算更正为 6 格）；`library/alpine` 相关的每一格两遍**完全一致**。所以那些
+   ghcr.io/gcr.io/quay.io 的 401 与 registry.k8s.io 的 404 是**认证判决**，不是内容协商假象。
+   翻转的那 6 格（2 个仓库 × 3 轮）恰好就是 rms 抉择器（不带 Accept）会把**存在的**镜像判成不存在的那种情形。
+
+
+========================================================================
+二、逐候选逐次的状态与耗时（4 组目标 × 3 轮 × 2 种出网设置）
+========================================================================
+
+### PROXY（HTTP_PROXY=192.168.188.1:3128）
+
+每个单元格：最终状态 @ 总耗时 (token 端点状态)
+
+
+[shared] 所有候选都问 library/alpine:latest（无限定名的真实场景）
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/alpine:latest                         200 @3281ms (T200)        200 @1333ms (T200)        200 @2729ms (T200)        
+registry-1.docker.io  library/alpine:latest                         200 @2646ms (T200)        200 @2686ms (T200)        200 @3105ms (T200)        
+ghcr.io               library/alpine:latest                         401 @1472ms (T403)        401 @1469ms (T403)        401 @2613ms (T403)        
+gcr.io                library/alpine:latest                         401 @4362ms (T403)        401 @4284ms (T403)        401 @3448ms (T403)        
+quay.io               library/alpine:latest                         401 @2263ms (T200)        401 @1441ms (T200)        401 @1758ms (T200)        
+registry.k8s.io       library/alpine:latest                         404 @1232ms (-)           404 @1242ms (-)           404 @1541ms (-)           
+
+[shared-absent] 所有候选都问 library/definitely-does-not-exist-rms-probe:latest
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/definitely-does-not-exist-rms-probe:latest404 @5059ms (T200)        404 @4528ms (T200)        404 @3540ms (T200)        
+registry-1.docker.io  library/definitely-does-not-exist-rms-probe:latest401 @3021ms (T200)        401 @3109ms (T200)        401 @2568ms (T200)        
+ghcr.io               library/definitely-does-not-exist-rms-probe:latest401 @1348ms (T403)        401 @1344ms (T403)        401 @2591ms (T403)        
+gcr.io                library/definitely-does-not-exist-rms-probe:latest401 @4261ms (T403)        401 @4017ms (T403)        401 @4343ms (T403)        
+quay.io               library/definitely-does-not-exist-rms-probe:latest401 @1710ms (T200)        401 @1732ms (T200)        401 @1607ms (T200)        
+registry.k8s.io       library/definitely-does-not-exist-rms-probe:latest404 @1538ms (-)           404 @1863ms (-)           404 @1357ms (-)           
+
+[native] 每个候选问一个确实存在于它自己上面的仓库
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/alpine:latest                         200 @1812ms (T200)        200 @1631ms (T200)        200 @1903ms (T200)        
+registry-1.docker.io  library/alpine:latest                         200 @2686ms (T200)        200 @2364ms (T200)        200 @2918ms (T200)        
+ghcr.io               astral-sh/uv:latest                           200 @1696ms (T200)        200 @4235ms (T200)        200 @4289ms (T200)        
+gcr.io                distroless/static:latest                      200 @1364ms (-)           200 @1472ms (-)           200 @1351ms (-)           
+quay.io               prometheus/busybox:latest                     200 @1634ms (-)           200 @1614ms (-)           200 @1458ms (-)           
+registry.k8s.io       pause:3.9                                     200 @5095ms (-)           200 @2719ms (-)           200 @4816ms (-)           
+
+[native-absent] 每个候选问同前缀下的不存在仓库
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/definitely-does-not-exist-rms-probe:latest404 @2456ms (T200)        404 @3547ms (T200)        404 @3953ms (T200)        
+registry-1.docker.io  library/definitely-does-not-exist-rms-probe:latest401 @3074ms (T200)        401 @3054ms (T200)        401 @2632ms (T200)        
+ghcr.io               astral-sh/definitely-does-not-exist-rms-probe:latest401 @1460ms (T403)        401 @2566ms (T403)        401 @3389ms (T403)        
+gcr.io                distroless/definitely-does-not-exist-rms-probe:latest404 @1345ms (-)           404 @3497ms (-)           404 @1310ms (-)           
+quay.io               prometheus/definitely-does-not-exist-rms-probe:latest401 @1462ms (T200)        401 @2087ms (T200)        401 @2280ms (T200)        
+registry.k8s.io       definitely-does-not-exist-rms-probe:latest    404 @1154ms (-)           404 @1849ms (-)           404 @1888ms (-)           
+
+### DIRECT（HTTP_PROXY 置空）
+
+每个单元格：最终状态 @ 总耗时 (token 端点状态)
+
+
+[shared] 所有候选都问 library/alpine:latest（无限定名的真实场景）
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/alpine:latest                         200 @337ms (T200)         200 @628ms (T200)         200 @231ms (T200)         
+registry-1.docker.io  library/alpine:latest                         200 @9678ms (T200)        401 @10001ms (T0)         401 @10001ms (T200)       
+ghcr.io               library/alpine:latest                         401 @6019ms (T403)        401 @5889ms (T403)        401 @4669ms (T403)        
+gcr.io                library/alpine:latest                         401 @7940ms (T403)        401 @5830ms (T403)        401 @6054ms (T403)        
+quay.io               library/alpine:latest                         401 @6231ms (T200)        401 @2611ms (T200)        401 @8168ms (T200)        
+registry.k8s.io       library/alpine:latest                         404 @6251ms (-)           404 @5031ms (-)           404 @7975ms (-)           
+
+[shared-absent] 所有候选都问 library/definitely-does-not-exist-rms-probe:latest
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/definitely-does-not-exist-rms-probe:latest404 @1209ms (T200)        404 @2158ms (T200)        404 @1174ms (T200)        
+registry-1.docker.io  library/definitely-does-not-exist-rms-probe:latest401 @10001ms (T0)         401 @10001ms (T200)       401 @10001ms (T200)       
+ghcr.io               library/definitely-does-not-exist-rms-probe:latest401 @6477ms (T403)        401 @6135ms (T403)        401 @8675ms (T403)        
+gcr.io                library/definitely-does-not-exist-rms-probe:latest401 @5759ms (T403)        401 @6695ms (T403)        401 @6064ms (T403)        
+quay.io               library/definitely-does-not-exist-rms-probe:latestERR @10001ms (T200)       401 @8028ms (T200)        401 @9152ms (T200)        
+registry.k8s.io       library/definitely-does-not-exist-rms-probe:latest404 @4745ms (-)           404 @4703ms (-)           404 @5139ms (-)           
+
+[native] 每个候选问一个确实存在于它自己上面的仓库
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/alpine:latest                         200 @742ms (T200)         200 @415ms (T200)         200 @449ms (T200)         
+registry-1.docker.io  library/alpine:latest                         ERR @5028ms (-)           401 @10001ms (T0)         401 @10000ms (T0)         
+ghcr.io               astral-sh/uv:latest                           200 @6945ms (T200)        200 @8338ms (T200)        200 @6734ms (T200)        
+gcr.io                distroless/static:latest                      200 @4827ms (-)           200 @5252ms (-)           200 @6133ms (-)           
+quay.io               prometheus/busybox:latest                     200 @4514ms (-)           200 @4847ms (-)           200 @5372ms (-)           
+registry.k8s.io       pause:3.9                                     ERR @5028ms (-)           ERR @10001ms (-)          ERR @10001ms (-)          
+
+[native-absent] 每个候选问同前缀下的不存在仓库
+upstream              target                                        r1                        r2                        r3                        
+docker.1ms.run        library/definitely-does-not-exist-rms-probe:latest404 @2522ms (T200)        404 @2399ms (T200)        404 @1196ms (T200)        
+registry-1.docker.io  library/definitely-does-not-exist-rms-probe:latestERR @10000ms (T200)       401 @10000ms (T0)         401 @9736ms (T200)        
+ghcr.io               astral-sh/definitely-does-not-exist-rms-probe:latest401 @8071ms (T403)        401 @10000ms (T0)         401 @5587ms (T403)        
+gcr.io                distroless/definitely-does-not-exist-rms-probe:latest404 @5235ms (-)           404 @6203ms (-)           404 @4840ms (-)           
+quay.io               prometheus/definitely-does-not-exist-rms-probe:latestERR @5021ms (-)           401 @8576ms (T200)        401 @6867ms (T200)        
+registry.k8s.io       definitely-does-not-exist-rms-probe:latest    404 @5358ms (-)           404 @5293ms (-)           404 @4679ms (-)           
+
+========================================================================
+三、并发压缩比与串行对照
+========================================================================
+
+spread = 同一轮里最晚发出的探测 − 最早发出的探测（越小越接近同时发出）
+wall   = 本轮起点到最后一个探测结束的墙钟
+serial = 把 6 个候选的耗时逐个相加（串行实现会花的时间；含 token 往返）
+ratio  = serial / wall，即并发带来的压缩比
+
+mode    round  case            spread_ms   wall_ms  serial_ms    ratio
+proxy   1      shared                0.4    4362.1    15257.1    3.50x
+proxy   1      shared-absent         0.1    5059.4    16937.8    3.35x
+proxy   1      native                0.2    5095.3    14286.2    2.80x
+proxy   1      native-absent         0.1    3074.5    10951.6    3.56x
+proxy   2      shared                0.1    4284.3    12456.7    2.91x
+proxy   2      shared-absent         0.2    4528.2    16592.7    3.66x
+proxy   2      native                0.2    4235.0    14034.9    3.31x
+proxy   2      native-absent         0.1    3547.3    16599.9    4.68x
+proxy   3      shared                0.2    3447.8    15194.3    4.41x
+proxy   3      shared-absent         0.1    4343.3    16005.8    3.69x
+proxy   3      native                0.2    4815.9    16734.6    3.47x
+proxy   3      native-absent         0.1    3952.6    15452.0    3.91x
+direct  1      shared                0.5    9678.5    36456.8    3.77x
+direct  1      shared-absent         0.1   10001.2    38191.4    3.82x
+direct  1      native                0.1    6944.8    27084.2    3.90x
+direct  1      native-absent         0.2   10000.3    36206.9    3.62x
+direct  2      shared                0.1   10000.9    29990.2    3.00x
+direct  2      shared-absent         0.1   10000.7    37721.1    3.77x
+direct  2      native                0.2   10000.9    38853.6    3.88x
+direct  2      native-absent         0.2   10000.5    42471.4    4.25x
+direct  3      shared                0.1   10000.9    37097.9    3.71x
+direct  3      shared-absent         0.2   10001.1    40204.9    4.02x
+direct  3      native                0.1   10000.6    38689.0    3.87x
+direct  3      native-absent         0.1    9736.6    32905.5    3.38x
+
+汇总：proxy 压缩比中位 3.53x（2.80x–4.68x），direct 中位 3.80x（3.00x–4.25x）。
+典型对照（proxy round1 native）：串行 14.3s → 并发 5.1s。
+
+========================================================================
+四、走代理 vs 直连（中位总耗时，d/p = 直连 ÷ 代理）
+========================================================================
+
+case           upstream                 proxy_med_ms direct_med_ms     d/p  verdicts proxy | direct
+shared         docker.1ms.run                   2729           337   0.12x  exists | exists
+shared         registry-1.docker.io             2686         10001   3.72x  exists | absent/exists
+shared         ghcr.io                          1472          5889   4.00x  absent | absent
+shared         gcr.io                           4284          6054   1.41x  absent | absent
+shared         quay.io                          1758          6231   3.54x  absent | absent
+shared         registry.k8s.io                  1242          6251   5.03x  absent | absent
+shared-absent  docker.1ms.run                   4528          1209   0.27x  absent | absent
+shared-absent  registry-1.docker.io             3021         10001   3.31x  absent | absent
+shared-absent  ghcr.io                          1348          6477   4.80x  absent | absent
+shared-absent  gcr.io                           4261          6064   1.42x  absent | absent
+shared-absent  quay.io                          1710          9152   5.35x  absent | absent/unreachable
+shared-absent  registry.k8s.io                  1538          4745   3.09x  absent | absent
+native         docker.1ms.run                   1812           449   0.25x  exists | exists
+native         registry-1.docker.io             2686         10000   3.72x  exists | absent/unreachable
+native         ghcr.io                          4235          6945   1.64x  exists | exists
+native         gcr.io                           1364          5252   3.85x  exists | exists
+native         quay.io                          1614          4847   3.00x  exists | exists
+native         registry.k8s.io                  4816         10001   2.08x  exists | unreachable
+native-absent  docker.1ms.run                   3547          2399   0.68x  absent | absent
+native-absent  registry-1.docker.io             3054         10000   3.27x  absent | absent/unreachable
+native-absent  ghcr.io                          2566          8071   3.15x  absent | absent
+native-absent  gcr.io                           1345          5235   3.89x  absent | absent
+native-absent  quay.io                          2087          6867   3.29x  absent | absent/unreachable
+native-absent  registry.k8s.io                  1849          5293   2.86x  absent | absent
+
+========================================================================
+
+========================================================================
+五、认证路径逐步实测（Lead 追问的口径问题）
+========================================================================
+
+5.1 逐字 WWW-Authenticate
+verbatim `WWW-Authenticate` 响应头（按候选与仓库去重；来自 raw-*.jsonl 的 www_authenticate 字段）
+
+  docker.1ms.run         /v2/library/alpine/manifests/<ref>
+      Bearer realm="https://docker.1ms.run/openapi/v1/auth/token", service="docker.1ms.run", scope="repository:library/alpine:pull"
+  docker.1ms.run         /v2/library/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://docker.1ms.run/openapi/v1/auth/token", service="docker.1ms.run", scope="repository:library/definitely-does-not-exist-rms-probe:pull"
+  gcr.io                 /v2/library/alpine/manifests/<ref>
+      Bearer realm="https://gcr.io/v2/token",service="gcr.io",scope="repository:library/gcr.io/alpine:pull"
+  gcr.io                 /v2/library/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://gcr.io/v2/token",service="gcr.io",scope="repository:library/gcr.io/definitely-does-not-exist-rms-probe:pull"
+  ghcr.io                /v2/astral-sh/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:astral-sh/definitely-does-not-exist-rms-probe:pull"
+  ghcr.io                /v2/astral-sh/uv/manifests/<ref>
+      Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:astral-sh/uv:pull"
+  ghcr.io                /v2/library/alpine/manifests/<ref>
+      Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:library/alpine:pull"
+  ghcr.io                /v2/library/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:library/definitely-does-not-exist-rms-probe:pull"
+  quay.io                /v2/library/alpine/manifests/<ref>
+      Bearer realm="https://quay.io/v2/auth",service="quay.io",scope="repository:library/alpine:pull"
+  quay.io                /v2/library/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://quay.io/v2/auth",service="quay.io",scope="repository:library/definitely-does-not-exist-rms-probe:pull"
+  quay.io                /v2/prometheus/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://quay.io/v2/auth",service="quay.io",scope="repository:prometheus/definitely-does-not-exist-rms-probe:pull"
+  registry-1.docker.io   /v2/library/alpine/manifests/<ref>
+      Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/alpine:pull"
+  registry-1.docker.io   /v2/library/definitely-does-not-exist-rms-probe/manifests/<ref>
+      Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/definitely-does-not-exist-rms-probe:pull"
+
+  未列出的候选（registry.k8s.io）从不发 401 挑战：它直接回 404（不存在）
+  或 200（存在，pause:3.9），因此无从发起 token 流程。
+  三个 realm 都齐全（realm+service+scope），没有出现「挑战不可解析」的情况：
+  本批次 WWW-Authenticate 解析失败次数 = 0。
+
+5.2 token 端点逐次读数（group=401：library/alpine:latest 问每个候选，3 轮）
+upstream                 repo:ref                                         head1 head1ms scope_ok tok_st  head2  head2ms  class              note
+docker.1ms.run           library/alpine:latest                              401    1797      yes    200    200      255  exists (200)       
+docker.1ms.run           library/alpine:latest                              401     218      yes    200    200      225  exists (200)       
+docker.1ms.run           library/alpine:latest                              401     693      yes    200    200      240  exists (200)       
+registry-1.docker.io     library/alpine:latest                              401    1470      yes    200    200      291  exists (200)       
+registry-1.docker.io     library/alpine:latest                              401     237      yes    200    200      315  exists (200)       
+registry-1.docker.io     library/alpine:latest                              401     240      yes    200    200      308  exists (200)       
+ghcr.io                  library/alpine:latest                              401    2816      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET ghcr.io: status 403
+ghcr.io                  library/alpine:latest                              401     254      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET ghcr.io: status 403
+ghcr.io                  library/alpine:latest                              401     256      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET ghcr.io: status 403
+gcr.io                   library/alpine:latest                              401    1280      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET gcr.io: status 403
+gcr.io                   library/alpine:latest                              401     338      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET gcr.io: status 403
+gcr.io                   library/alpine:latest                              401     362      yes    403      -        0  auth not completed (token endpoint 403, no token) token GET gcr.io: status 403
+quay.io                  library/alpine:latest                              401    2243      yes    200    401      880  auth not completed (401 again after token) 
+quay.io                  library/alpine:latest                              401     413      yes    200    401      414  auth not completed (401 again after token) 
+quay.io                  library/alpine:latest                              401     413      yes    200    401      419  auth not completed (401 again after token) 
+registry.k8s.io          library/alpine:latest                              404    1829               -      -        0  explicitly absent (404 after auth) 
+registry.k8s.io          library/alpine:latest                              404     282               -      -        0  explicitly absent (404 after auth) 
+registry.k8s.io          library/alpine:latest                              404     268               -      -        0  explicitly absent (404 after auth) 
+
+  上面每行三列读数分别是：HEAD#1 的状态与耗时；token 端点被调用了吗 + 它的
+  状态；HEAD#2（带 Bearer token 重试 manifest HEAD）的状态与耗时。
+  完整逐步输出（含 token URL、token 响应体、每次耗时拆分）见
+  .probe/selection/tokenwalk-proxy.txt。
+
+5.3 认证走完后的判定，每个上游一行（group=401）
+  在这里按「存在 / 明确不存在 / 认证未走通」三态归档——
+
+  +-----------------------+--------------------------------------------------+
+  | docker.1ms.run        | 存在：token 200，HEAD#2 200（3/3 轮）              |
+  | registry-1.docker.io  | 存在：token 200，HEAD#2 200（3/3 轮）              |
+  | ghcr.io               | 认证未走通：token 端点 403，没有 HEAD#2（3/3 轮）  |
+  | gcr.io                | 认证未走通：token 端点 403，没有 HEAD#2（3/3 轮）  |
+  | quay.io               | 认证未走通：token 200 但 HEAD#2 401（3/3 轮）      |
+  | registry.k8s.io       | 明确不存在：HEAD#1 直接 404，无挑战（3/3 轮）      |
+  +-----------------------+--------------------------------------------------+
+
+  对照组（group=contrast，证明「认证未走通」不是上游整体故障）：
+upstream                 repo:ref                                         head1 head1ms scope_ok tok_st  head2  head2ms  class              note
+ghcr.io                  astral-sh/uv:latest                                401     249      yes    200    200      300  exists (200)       
+ghcr.io                  astral-sh/uv:latest                                401     255      yes    200    200      287  exists (200)       
+ghcr.io                  astral-sh/uv:latest                                401     257      yes    200    200      291  exists (200)       
+gcr.io                   distroless/static:latest                           200     926               -      -        0  exists (200)       
+gcr.io                   distroless/static:latest                           200     393               -      -        0  exists (200)       
+gcr.io                   distroless/static:latest                           200     404               -      -        0  exists (200)       
+quay.io                  prometheus/busybox:latest                          200     504               -      -        0  exists (200)       
+quay.io                  prometheus/busybox:latest                          200     468               -      -        0  exists (200)       
+quay.io                  prometheus/busybox:latest                          200     482               -      -        0  exists (200)       
+registry.k8s.io          pause:3.9                                          200    2543               -      -        0  exists (200)       
+registry.k8s.io          pause:3.9                                          200    1199               -      -        0  exists (200)       
+registry.k8s.io          pause:3.9                                          200    1011               -      -        0  exists (200)       
+docker.1ms.run           library/definitely-does-not-exist-rms-probe:latest     401     247      yes    200    404     2416  explicitly absent (404 after auth) 
+docker.1ms.run           library/definitely-does-not-exist-rms-probe:latest     401     243      yes    200    404     1418  explicitly absent (404 after auth) 
+docker.1ms.run           library/definitely-does-not-exist-rms-probe:latest     401     253      yes    200    404     1111  explicitly absent (404 after auth) 
+
+  关键对照：ghcr.io 对 astral-sh/uv 的 token 端点 3/3 次 200、HEAD#2 3/3 次 200。
+  同一个 token 端点、同一个时刻，只换仓库名，就从 403 变成 200 —— 所以 ghcr.io
+  对 library/alpine 的 403 是**按仓库**的判决。判决内容是「不给票」而不是
+  「manifest 不存在」，这是两个不同的证据等级，本文件不把它们混同。
+
+5.4 耗时口径（Lead 第 4 问）
+  二/三节的 `duration_ms` 是**一次完整探测的总耗时**，即
+  HEAD#1 + token GET + HEAD#2 三段之和，不是「只发了一次 HEAD」。
+  以 proxy round1 shared 的三个候选为例（同一次运行里逐段拆出来的）：
+    docker.1ms.run        head1 2022.5ms + token 1175.4ms + head2 3131.2ms = 6329.3ms（实测 6329.3ms）
+    registry-1.docker.io  head1 3370.0ms + token 2866.0ms + head2  568.4ms = 6804.5ms（实测 6816.5ms）
+    quay.io               head1 1267.2ms + token  298.6ms + head2  746.4ms = 2312.2ms（实测 2312.4ms）
+    ghcr.io               head1 3930.3ms + token  361.0ms + head2    0.0ms = 4291.4ms（实测 4291.4ms）
+  （两处小差额是段间 Go 侧记账开销；表里的 duration_ms 是端到端实测值。）
+  jsonl 里同时保留 head1_ms / token_get_ms / head2_ms / token_status，
+  报告与复核都可以只用其中一段，不必依赖总和。
+  这也解释了为什么 token 端点的往返**计入**抉择器的 ProbeLatency 比较：
+  两个都存在的候选里，谁的 token 往返慢，谁就排在后面。若设计上希望只比较
+  「首个 HEAD 的 RTT」，需要用 head1_ms 而不是 duration_ms —— 这是一个
+  明确的口径选择，本文件同时给出两列供 dispatcher 决定。
+
+
+========================================================================
+六、失败与不可达的原文错误（逐字，未改写）
+========================================================================
+
+  [direct] gcr.io: 6x 401; token endpoint did not grant a token: token GET gcr.io: status 403 body={"errors":[{"code":"DENIED","message":"Artifact Registry API has not been used in project 926047264328 before or it is disabled. Enable it by visiting https://c...
+  [direct] ghcr.io: 1x 401; token endpoint did not grant a token: token GET ghcr.io: Get ghcr.io: context deadline exceeded
+  [direct] ghcr.io: 8x 401; token endpoint did not grant a token: token GET ghcr.io: status 403 body={"errors":[{"code":"DENIED","message":"requested access to the resource is denied"}]}
+  [direct] quay.io: 7x 401/403 after bearer token
+  [direct] quay.io: 1x Head quay.io: context deadline exceeded
+  [direct] quay.io: 1x Head quay.io: read tcp 192.168.188.101:33256->100.48.181.199:443: read: connection reset by peer
+  [direct] registry-1.docker.io: 1x 401/403 after bearer token
+  [direct] registry-1.docker.io: 5x 401; token endpoint did not grant a token: token GET auth.docker.io: Get auth.docker.io: context deadline exceeded
+  [direct] registry-1.docker.io: 3x 401; token endpoint did not grant a token: token GET auth.docker.io: bad JSON: unexpected end of JSON input
+  [direct] registry-1.docker.io: 1x Head registry-1.docker.io: context deadline exceeded
+  [direct] registry-1.docker.io: 1x Head registry-1.docker.io: read tcp 192.168.188.101:47610->52.86.134.208:443: read: connection reset by peer
+  [direct] registry.k8s.io: 1x Head registry.k8s.io: read tcp 192.168.188.101:54118->34.96.108.209:443: read: connection reset by peer
+  [direct] registry.k8s.io: 2x Head us-east4-docker.pkg.dev: context deadline exceeded
+  [proxy] gcr.io: 6x 401; token endpoint did not grant a token: token GET gcr.io: status 403 body={"errors":[{"code":"DENIED","message":"Artifact Registry API has not been used in project 926047264328 before or it is disabled. Enable it by visiting https://c...
+  [proxy] ghcr.io: 9x 401; token endpoint did not grant a token: token GET ghcr.io: status 403 body={"errors":[{"code":"DENIED","message":"requested access to the resource is denied"}]}
+  [proxy] quay.io: 9x 401/403 after bearer token
+  [proxy] registry-1.docker.io: 6x 401/403 after bearer token
+
+========================================================================
+七、反常与局限（不做美化）
+========================================================================
+
+a) ghcr.io / gcr.io 的 token 端点在不给票时就 403（不是 404）。
+   proxy+direct 共 24 次探测里，ghcr.io 有 18 次、gcr.io 有
+   12/24 次是「调用了 token 端点、它回 403、没拿到票」。
+   ghcr.io 原文：`token GET ghcr.io: status 403 body={"errors":[{"code":"DENIED","message":"requested access to the resource is denied"}]}`
+   gcr.io 原文：403，body 说明 Artifact Registry API 未在该 project 启用。
+   对照：同一运行里 ghcr.io 对 astral-sh/uv 的 token 端点 3/3 次 200、HEAD#2 3/3 次
+   200，所以 403 是按仓库给出的判决；但判决内容是「不给票」，不是「manifest 404」。
+
+b) quay.io 拿到票之后 HEAD#2 仍是 401：16 次（token_flow=true 且最终 401）。
+   tokenwalk 的 group=401 里是 3/3 轮。
+   对照：quay.io 的 prometheus/busybox 直接 200，从不发挑战。即 quay 用
+   401-after-token 表达「不给你的仓库」，而不是 404；响应无附加错误体。
+
+c) Docker Hub 对不存在的仓库回 401（token 200 后仍 401），不是 404。
+   shared-absent / native-absent 里 registry-1.docker.io 共 7 次这种形态。
+
+d) registry.k8s.io 会 307 重定向到 us-east4-docker.pkg.dev（错误原文里能看到该
+   主机名，本批次 2 次），最终状态由重定向目标决定；直连时该目标超时，
+   所以「registry.k8s.io 不可达」在本环境其实是「它的重定向目标不可达」。
+
+e) 单个慢候选会把整轮墙钟拖到 probe_timeout：本批次墙钟 ≥9990ms 的轮次
+   [('direct', 1, 'shared-absent', 10001.2), ('direct', 1, 'native-absent', 10000.3), ('direct', 2, 'shared', 10000.9), ('direct', 2, 'shared-absent', 10000.7), ('direct', 2, 'native', 10000.9), ('direct', 2, 'native-absent', 10000.5), ('direct', 3, 'shared', 10000.9), ('direct', 3, 'shared-absent', 10001.1), ('direct', 3, 'native', 10000.6)]。
+   传输层原文（逐字，3 种）：
+     Head quay.io: read tcp 192.168.188.101:33256->100.48.181.199:443: read: connection reset by peer
+     Head registry-1.docker.io: read tcp 192.168.188.101:47610->52.86.134.208:443: read: connection reset by peer
+     Head registry.k8s.io: read tcp 192.168.188.101:54118->34.96.108.209:443: read: connection reset by peer
+
+f) 本文件的读数全部来自 192.168.188.101。103 的出口路径（是否走 3128、NO_PROXY
+   是否覆盖镜像域名）未在本任务中验证，也未被改动；因此：
+   - 「非 Hub 候选对 library/alpine 判 401/404」「401/403 与 404 的分布」
+     「token 三态」这类**行为**结论与主机无关，可以直接引用；
+   - 「哪个候选最快」的**排序**与代理/直连的倍数差异是 101 的路径特征，
+     在 103 上引用前必须在 103 上重跑一遍。
+
+g) 未覆盖：HEAD 被 405/501 拒绝而降级 GET 的分支在 11 个真实组合里一次都没
+   出现（全部直接给出 200/401/404），该分支目前只有离线单测覆盖。
+   本批次也没有出现「WWW-Authenticate 不可解析」的情况（解析失败 0 次）。
+
+h) 本任务只用**匿名**访问，没有使用任何凭据；带 Basic 凭据的 token 换取
+   （ghcr.io 用 PAT、quay.io 机器人账号等）未测，因此「私有仓库会被判成什么」
+   这一问在本文件里只能从「匿名 403/401」推断，不是直接读数。
+
+========================================================================
+八、补测(2026-10-13 追加):内容协商对照 —— 带 / 不带 manifest Accept
+========================================================================
+
+起因:rms 的抉择器(internal/selection/probe.go)构造探测请求时只设了 User-Agent,没有设
+manifest 的 Accept;而 e2e 用例在一个**冷缓存**上请求一个确实存在的镜像时拿到 404
+NAME_UNKNOWN,假上游日志给出原文:
+
+    "err.message":"OCI manifest found, but accept header does not support OCI manifests",
+    "http.request.method":"HEAD","http.request.useragent":"rms/selection-probe",
+    "http.response.status":404
+
+要判定的问题:本文件前面那些「ghcr.io/gcr.io/quay.io 对 library/alpine 判 401/404」的读数,
+到底是仓库真的不在,还是内容协商挡出来的**假 absent**?
+
+做法:同一个探针程序(.probe/selection/main.go,它**本来就带** 4 个 manifest media type 的
+Accept,见该文件 acceptHeaders),加一个 -noaccept 开关跑第二遍;两遍**只差这一个请求头**,
+都是走代理、每个组合 3 轮、同一批次背靠背跑完。命令:
+
+    go run .probe/selection/main.go -mode=proxy -rounds=3             -out .probe/selection/raw-proxy.jsonl      # 带
+    go run .probe/selection/main.go -mode=proxy -rounds=3 -noaccept   -out .probe/selection/raw-noaccept.jsonl   # 不带
+
+8.1 全候选 × 全目标矩阵(3 轮的状态/判定,「存在」判 exists)
+
+case           upstream              带 manifest Accept         不带任何 Accept               一致?
+native         docker.1ms.run        200×3 exists              200×3 exists              是
+native         gcr.io                200×3 exists              404×3 absent              否 <<<
+native         ghcr.io               200×3 exists              404×3 absent              否 <<<
+native         quay.io               200×3 exists              200×3 exists              是
+native         registry-1.docker.io  200×3 exists              200×3 exists              是
+native         registry.k8s.io       200×3 exists              200×3 exists              是
+native-absent  docker.1ms.run        404×3 absent              404×3 absent              是
+native-absent  gcr.io                404×3 absent              404×3 absent              是
+native-absent  ghcr.io               401×3 absent              401×3 absent              是
+native-absent  quay.io               401×3 absent              401×3 absent              是
+native-absent  registry-1.docker.io  401×3 absent              401×3 absent              是
+native-absent  registry.k8s.io       404×3 absent              404×3 absent              是
+shared         docker.1ms.run        200×3 exists              200×3 exists              是
+shared         gcr.io                401×3 absent              401×3 absent              是
+shared         ghcr.io               401×3 absent              401×3 absent              是
+shared         quay.io               401×3 absent              401×3 absent              是
+shared         registry-1.docker.io  200×3 exists              200×3 exists              是
+shared         registry.k8s.io       404×3 absent              404×3 absent              是
+shared-absent  docker.1ms.run        404×3 absent              404×3 absent              是
+shared-absent  gcr.io                401×3 absent              401×3 absent              是
+shared-absent  ghcr.io               401×3 absent              401×3 absent              是
+shared-absent  quay.io               401×3 absent              401×3 absent              是
+shared-absent  registry-1.docker.io  401×3 absent              401×3 absent              是
+shared-absent  registry.k8s.io       404×3 absent              404×3 absent              是
+
+8.2 两遍之间**判定发生翻转的格子**(全部)
+
+    native / gcr.io:  带 Accept = 200×3 exists   |   不带 Accept = 404×3 absent
+    native / ghcr.io:  带 Accept = 200×3 exists   |   不带 Accept = 404×3 absent
+
+8.3 结论:两类 absent 必须分开写
+
+  (a) 认证判决类 absent —— 与 Accept 无关。ghcr.io / gcr.io 对 library/alpine 的 401 来自
+      **token 端点 403**(拿不到票),quay.io 的 401 来自**拿到票后 manifest 仍 401**,
+      registry.k8s.io 的 404 是**根本没有挑战直接 404**。这些读数在两遍里**逐格一致**,
+      所以它们不是内容协商造成的假 absent。401 也不可能由 Accept 产生:
+      内容协商失败的表现是 404(见 (b)),不是 401。
+  (b) 内容协商类**假 absent** —— 只在**仓库真的存在**于 ghcr.io / gcr.io 且客户端不带
+      manifest Accept 时出现:本批次里 native 组(ghcr.io 的 astral-sh/uv、gcr.io 的
+      distroless/static)从 **200 翻成 404**(3/3 轮)。这正是 rms 抉择器现在的处境:
+      它会把这两个 namespace 上**存在**的镜像判成不存在。
+      注意 docker.1ms.run、registry-1.docker.io、quay.io、registry.k8s.io 在 native 组
+      两遍都是 200 —— 它们宽容,少一个 Accept 头也不影响。
+
+  所以对 Lead 的问题的直接回答:**表里那 22 个「ghcr.io 401 / gcr.io 401 / quay.io 401 /
+  registry.k8s.io 404」的格子不是内容协商假象** —— 两遍完全一致;而且它们全是 401/404-without-
+  challenge 这类认证判决。(b) 类只影响 native 组那两格,也正好就是 e2e 抓到的那条缺陷。
+
+  范围限定:HEAD 响应没有 body,所以 (b) 的签名消息只出现在**上游自己的日志**里(见上面的
+  原文),抓不到响应体;本文件因此用「同一仓库 200 → 404 的状态翻转」作为判据,而不是靠消息文本。
+  另外本地缓存先于探测被查(internal/selection «cachedOnDisk»),热缓存不受 (b) 影响,
+  缺陷只在冷路径(第一次拉某个镜像)发作。
+
+8.4 复现命令
+
+    tok=$(curl -sS "https://ghcr.io/token?service=ghcr.io&scope=repository:astral-sh/uv:pull" \
+          | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+    curl -o /dev/null -w '%{http_code}\n' -I -H "Authorization: Bearer $tok" \
+         -H "User-Agent: rms/selection-probe" \
+         https://ghcr.io/v2/astral-sh/uv/manifests/latest                      # 404
+    curl -o /dev/null -w '%{http_code}\n' -I -H "Authorization: Bearer $tok" \
+         -H "User-Agent: rms/selection-probe" \
+         -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+         https://ghcr.io/v2/astral-sh/uv/manifests/latest                      # 200
+
+
+========================================================================
+九、原始产物清单
+========================================================================
+
+.probe/selection/main.go              并发整轮探测程序（独立于 rms 内部包）
+.probe/selection/tokenwalk/main.go    单条认证路径逐步走（HEAD#1 → token → HEAD#2）
+.probe/selection/raw-proxy.jsonl      走代理 3 轮的逐次原始记录（每轮一行 JSON，含逐段耗时）
+.probe/selection/raw-direct.jsonl     直连 3 轮的逐次原始记录
+.probe/selection/proxy-run.txt        proxy 模式完整 stdout
+.probe/selection/direct-run.txt       direct 模式完整 stdout
+.probe/selection/tokenwalk-proxy.txt  tokenwalk 完整 stdout（含 token URL 与响应体）
+.probe/selection/mkreport.py          生成本文件的脚本
+reports/raw/selection-real-upstream.txt  本文件

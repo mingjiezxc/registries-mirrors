@@ -1,0 +1,18 @@
+# 单测读数原文（2026-10-13T09:15:07+08:00）
+    chooser_test.go:450: latencies: slower candidate b=883.836µs (winner), a=200ms (200ms delay)
+--- PASS: TestDecidePicksTheFasterCandidate (0.20s)
+    chooser_test.go:488: concurrency: skew between the two upstreams = 3µs; total Decide = 151.003ms (two serial probes would be >= 300ms)
+--- PASS: TestDecideProbesCandidatesConcurrently (0.15s)
+--- PASS: TestDecideSendsTheManifestAcceptHeader (0.00s)
+--- PASS: TestDecideSendsTheManifestAcceptHeaderOnTheGetFallback (0.00s)
+ok  	github.com/watsons/rms/internal/selection	0.363s
+
+# 严格解码实测（新二进制 config validate）
+$ rms config validate --config .probe/config-check/old-default.yaml
+rms: .probe/config-check/old-default.yaml: decode config: yaml: unmarshal errors:
+  line 4: field default not found in type config.Namespaces
+$ rms config validate --config .probe/config-check/old-listeners.yaml
+rms: .probe/config-check/old-listeners.yaml: decode config: yaml: unmarshal errors:
+  line 7: field listeners not found in type config.Config
+$ rms config validate --config .probe/config-check/live-103.yaml
+rms: .probe/config-check/live-103.yaml: auth.htpasswd: stat /etc/rms/htpasswd: no such file or directory

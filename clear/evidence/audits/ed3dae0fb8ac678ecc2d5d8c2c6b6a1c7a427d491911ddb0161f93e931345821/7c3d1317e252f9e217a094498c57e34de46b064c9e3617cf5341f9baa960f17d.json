@@ -1,0 +1,182 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "f4f6b5c5-8951-4a5b-9c75-adaab282bf0f",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "验收证据的候选数与交付态不一致且未登记：交付态为 10 个 proxy namespace（deploy/103/rms.yaml:57-135），而 criterion ⑥ 所依据的 404/503 包络与探测耗时全部是 5 候选抓取（reports/raw/103-final-live.txt:14、:39-58；reports/raw/103-selection-rollout-live.txt），全库 source=probe 决策日志 9 条无一为 candidates=10。",
+      "matters": "yes"
+    },
+    {
+      "what": "同一报告内候选数自相矛盾：reports/103-selection-rollout.md:35「并发探测 5 个 proxy namespace」对 :124「并发探测 10 个候选」，两者都描述上线后，且 103 rms.yaml 实为 10 个。",
+      "matters": "yes"
+    },
+    {
+      "what": "q3 称「103 现在有 10 个 proxy namespace 且全部 up」，但 reports/raw/103-final-live.txt:55 只有 5 条 rms_namespace_up，10 条的原始抓取全库无命中（改前的 reports/raw/baseline.txt 才是同形态的 5 条）。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "记录与实现一致：探针把认证流程走完后的 401/403/404 判为 absent（internal/selection/probe.go:341-390、reports/selection-verification.md:100 的限制条），103 现场拼错镜像名得 404 而非 503（reports/raw/103-final-live.txt:7-11）。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "真实上游逐格比对：ghcr.io/gcr.io native 组 200→404 共 6 格翻转（我按 .probe/selection/raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算＝6 格），代码带 4 个 manifest media type（internal/selection/probe.go:47-52）。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "带仓库名的 blob 走 blob 路径并有回归用例：internal/selection/chooser_test.go:1850 断言两个候选收到的都是 /v2/<repo>/blobs/<digest>、任何 /manifests/ 命中即失败。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "与实现和实测一致：pick 只在「无人答复」时回 ErrUnreachable（internal/selection/probe.go:562-585），用例 TestDecideDistinguishesNotFoundFromUnreachable 与 TestAFailingCandidateStillLosesToAnAnswer 覆盖四象限。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "记录支持：daocloud 的 20MB layer 实测 110.5s（reports/raw/103-daocloud-namespaces-verify.txt:15）且其 token 绑客户端 IP；报告据此把 docker.m.daocloud.io 排在 docker.1ms.run 之后并说明对调条件（reports/103-selection-rollout.md:96-98）。"
+    }
+  ],
+  "basis": "实现与单测/门禁逐条对上（并发探测、只认 2xx、TTL、token 重试、三分类错误、404/503 映射、删除 default/listeners），我在副本复跑了相关包、-race 与 -tags e2e 全绿（race 1.799s/6.237s；e2e 顶层 11 RUN=10 PASS+1 SKIP、RUN 行 29，与 raw 一致），配置里 15000–15006 只在 deploy/103/README.md 的迁移表出现、.env/.env.example/compose 已无旧端口与 RMS_PORT_*，10 个 proxy namespace 与 GET/HEAD 重选一次均落地。但判据⑥未满足：交付的最终 103 现场配置是 10 个 proxy namespace（deploy/103/rms.yaml 实计 10 个），而 required 的验收证据（端口清单、404/503 包络、selection 探测耗时日志）全部取自 5 个候选的抓取——所有 raw 里 source=probe 的决策日志共 9 条、candidates 全为 5，candidates=10 只有 1 条且 source=cache（无探测），报告自身还并存「并发探测 5 个」与「并发探测 10 个候选」两处互相矛盾的表述且未登记，故不能判定该项已达成。",
+  "shortfalls": [
+    {
+      "criterion": "⑥ 103 上重新部署并留下证据",
+      "what": "交付态是 10 个 proxy namespace（deploy/103/rms.yaml:57-135 实计 docker.io/ghcr.io/gcr.io/quay.io/registry.k8s.io/docker.elastic.co/dhi.io/k8s.gcr.io/mcr.microsoft.com/nvcr.io），但所有 source=probe 的决策日志（reports/raw/*.txt 共 9 条）candidates 均为 5；唯一 candidates=10 的日志是 reports/raw/103-daocloud-namespaces-verify.txt:40 且 source=cache（无探测、无逐候选耗时）；404 包络与「2.49–7.47s」出自 reports/raw/103-final-live.txt:14 与 reports/raw/",
+      "missing": "10 个候选（交付态）下的一次未命中缓存探测日志（含逐候选耗时）、404 与 503 两种包络的现场复测，以及 10 条 rms_namespace_up 的原始抓取"
+    },
+    {
+      "criterion": "② namespaces.selection 与 dispatcher 转发",
+      "what": "reports/103-selection-rollout.md:35 写「并发探测 5 个 proxy namespace」，同文件:124 写「每个无限定请求要并发探测 10 个候选」，两处同指上线后状态；103 配置实为 10 个（deploy/103/rms.yaml:57-135）。接线本身可查：dispatch.go:145-151、473-530 按选择结果转发并重选一次，:424-435 映射 404/503。",
+      "missing": "统一为交付态的候选数（10）并说明 5 候选读数属增配前的哪一段，或注明该读数早于增配"
+    },
+    {
+      "criterion": "① 探测并发与只认 2xx",
+      "what": "两条断言可查：internal/selection/chooser_test.go:487（skew<50ms、总耗时<250ms）与 chooser_test.go:457（胜者 883µs 而非 200ms 候选）；probe.go:341 只把 200–299 判 found。",
+      "missing": "无单独的「非 2xx 的其他成功类状态（如 204/302）不得算存在」反例用例，仅由状态码区间隐含"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 3
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 14
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 55
+    },
+    {
+      "path": "reports/raw/103-daocloud-namespaces-verify.txt",
+      "line": 18
+    },
+    {
+      "path": "reports/raw/103-daocloud-namespaces-verify.txt",
+      "line": 40
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 35
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 75
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 124
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 39
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 79
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 100
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 341
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 544
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 487
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1181
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1850
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 49
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 17
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 31
+    },
+    {
+      "path": ".env.example",
+      "line": 16
+    },
+    {
+      "path": "docker-compose.yml",
+      "line": 51
+    }
+  ],
+  "card": "实现与单测/门禁逐条对上（并发探测、只认 2xx、TTL、token 重试、三分类错误、404/503 映射、删除 default/listeners），我在副本复跑了相关包、-race 与 -tags e2e 全绿（race 1.799s/6.237s；e2e 顶层 11 RUN=10 PASS+1 SKIP、RUN 行 29，与 raw 一致），配置里 15000–15006 只在 deploy/103/README.md 的迁移表出现、.env/.env.example/compose 已无旧端口与 RMS_PORT_*，10 个 proxy namespace 与 GET/HEAD 重选一次均落地。但判据⑥未满足：交付的最终 103 现场配置是 10 个 proxy namespace（deploy/103/rms.yaml 实计 10 个），而 required 的验收证据（端口清单、404/503 包络、selection 探测耗时日志）全部取自 5 个候选的抓取——所有 raw 里 source=probe 的决策日志共 9 条、candidates 全为 5，candidates=10 只有 1 条且 source=cache（无探测），报告自身还并存「并发探测 5 个」与「并发探测 10 个候选」两处互相矛盾的表述且未登记，故不能判定该项已达成。",
+  "created_at": 1791860997969,
+  "evaluator": "independent"
+}

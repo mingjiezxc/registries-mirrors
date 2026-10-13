@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-0f17c29352283a40af2c4dc09c2f7076-u4",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "reports/103-selection-rollout.md:60 与 reports/selection-verification.md:87 把「无仓库名的 blob → 200」写成无条件读数:我在 103 现场复验同一 URL,无最近 manifest 决策时得 503 UNAVAILABLE(日志 source=blob-disk、repo 为空),先生成一次 manifest 决策后立刻请求才 200 @4.1ms / 581 字节(日志 source=affinity)。前置条件只登记在 reports/103-selection-rollout.md:114,表里没写。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者复现正确，是报告写得像无条件读数。无仓库名的 blob（`/v2/blobs/<digest>`）**需要进程内已有该仓库的 manifest 决策**（仓库亲和）才能 200；若没有（例如刚重启就直接按 digest 取），按设计返回 503，因为它无法确定仓库归属而选择不猜。两处已改写：上线记录第 7 点与核验记录第四节该行都加了这一前置条件，并指向 e2e `TestUnqualifiedBlobWithUnknownDigestIsUnavailable`、`TestUnqualifiedBlobOnDiskWithoutARepositoryIsRefused` 与评估者自己复现到的 503。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:0f17c29352283a40af2c4dc09c2f7076#u4",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791858804535,
+  "updated": 1791862477398
+}

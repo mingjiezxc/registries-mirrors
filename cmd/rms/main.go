@@ -380,20 +380,49 @@ func cmdConfig(args []string, stdout io.Writer) error {
 
 	fmt.Fprintf(stdout, "%s: ok\n", *configPath)
 	fmt.Fprintf(stdout, "  primary listener: %s\n", cfg.Server.Listen)
-	for _, l := range cfg.EffectiveListeners() {
-		ns := l.Namespace
-		if ns == "" {
-			ns = "<multi-namespace>"
-		}
-		fmt.Fprintf(stdout, "  listener %-20s namespace=%s external_url=%s\n", l.Listen, ns, orDash(l.ExternalURL))
-	}
 	fmt.Fprintf(stdout, "  storage root: %s\n", cfg.Storage.Root)
-	fmt.Fprintf(stdout, "  default namespace: %s\n", cfg.Namespaces.Default)
+	fmt.Fprintf(stdout, "  selection probe_ttl: %s\n", cfg.Namespaces.Selection.ProbeTTL.Std())
+	fmt.Fprintf(stdout, "  selection probe_timeout: %s\n", cfg.Namespaces.Selection.ProbeTimeout.Std())
+	fmt.Fprintf(stdout, "  selection decision_deadline: %s\n", cfg.Namespaces.Selection.DecisionDeadline.Std())
+	fmt.Fprintf(stdout, "  selection balance: %s (window %gx)\n",
+		cfg.Namespaces.Selection.Balance, cfg.Namespaces.Selection.BalanceWindow)
+	fmt.Fprintf(stdout, "  auth: %s\n", validateAuthLine(cfg))
+	fmt.Fprintf(stdout, "  pull: %s\n", validatePullLine(cfg))
 	for _, name := range sortedKeys(cfg.Namespaces.Proxy) {
-		fmt.Fprintf(stdout, "  proxy %-16s upstreams=%s\n",
-			name, strings.Join(cfg.Namespaces.Proxy[name].Upstreams, ","))
+		mode := "race"
+		if !cfg.RaceEnabledFor(name) {
+			mode = "ordered"
+		}
+		fmt.Fprintf(stdout, "  proxy %-16s mode=%s balance=%s upstreams=%s\n",
+			name, mode, cfg.BalanceFor(name), strings.Join(cfg.Namespaces.Proxy[name].Upstreams, ","))
 	}
 	return nil
+}
+
+// validateAuthLine states whether pushes are authenticated at all, which is the
+// single most consequential thing in this file.
+func validateAuthLine(cfg *config.Config) string {
+	if cfg.Auth.Type != "htpasswd" {
+		return "none: PUSHES ARE UNPROTECTED (auth.type is " + cfg.Auth.Type + ")"
+	}
+	return "htpasswd (" + cfg.Auth.Htpasswd + ")"
+}
+
+// validatePullLine states what a client may pull without credentials. A mirror
+// whose proxy namespaces require authentication is invisible to a Docker
+// daemon's registry-mirrors list, so this line is the one that says whether
+// this host can be used as one.
+func validatePullLine(cfg *config.Config) string {
+	switch {
+	case cfg.Auth.Type != "htpasswd":
+		return "anonymous for every namespace (authentication is off)"
+	case !cfg.Auth.AnonymousPullProxy:
+		return "authenticated for proxy namespaces: a Docker daemon using this host as a registry mirror will bypass it"
+	case cfg.Auth.AnonymousPullLocal:
+		return "anonymous for proxy AND local namespaces (anonymous_pull_local)"
+	default:
+		return "anonymous for proxy namespaces; local namespaces require login"
+	}
 }
 
 func sortedKeys(m map[string]config.ProxyNamespace) []string {

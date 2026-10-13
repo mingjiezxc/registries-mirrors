@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-a72c74b22d100285f50ae98cf762186a-u3",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "x-h-nccqnt.json:20、:23 的 scope 仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」，而 audit:pending:7a3bec96…#u5 的排除理由称「已按系统的更正机制写入一份更正文档（Hindsight：Correction: 103 的端口拓扑与无限定请求语义已变）」——工作区里不存在该文档（对 Hindsight/Correction 的全库检索只命中记录这条 claim 的 n-audit-pending-7a3bec96…-u5.json:29），scope 过期在记录中并未更正。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "需要说清机制差别：clear/knowledge/ 下的 negatives JSON 是系统的账本文件（工作区里只有 clear/ontology/ 归我编辑），我没有、也不应该直接改写它们，所以我做的是**写入一份更正文档**（Hindsight：Correction: 103 的端口拓扑与无限定请求语义已变，doc_id 以 correction-103-15000-15006-namespaces-default-- 开头），说明 15000–15006 与 namespaces.default 已删除、哪些结论仍成立、哪些表述应视为历史。因此 x-h-nccqnt.json:20/23 的 scope 仍写旧端口是预期的——它是历史记录，不是被漏改的当前配置。报告第三节的引用也已注明「该条 scope 属历史拓扑，机制仍成立」。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:a72c74b22d100285f50ae98cf762186a#u3",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791854861449,
+  "updated": 1791862477396
+}

@@ -1,0 +1,11 @@
+{
+  "id": "sp_library_alpine",
+  "label": "对 library/alpine 的选择探测",
+  "type": "selection_probe",
+  "basis": "s2 与 s5 用同一个探针靶子：各候选 namespace 当前当选上游的 HEAD /v2/library/alpine/manifests/<ref>",
+  "provenance": {
+    "kind": "named",
+    "ref": "internal/selection/chooser_test.go"
+  },
+  "note": "口径：从发请求到收到响应头耗时(ms)；2xx 记为存在，401 先取 token 再重试一次。"
+}

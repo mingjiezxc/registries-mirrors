@@ -1,0 +1,32 @@
+{
+  "id": "n-audit-pending-4e7161d06bec4de5fdae17ee4e514d09-u1",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "reports/103-cutover-verify.md:89-95 的「rms 侧对应记录」不是 rms 能产生的输出:rms 自身日志是 slog JSON(internal/obs/logging.go:36-37),内嵌 registry 的访问日志是 logrus JSON、字段为 http.request.uri/http.response.* (internal/obs/logging.go:79-80;reports/103-stage-smoke.md:61-62 就是这种 JSON),而这里写成「HEAD …?ns=docker.io status=200 dur=1.66s」;且 `strings -a bin/rms | grep '?ns='` 命中数 0,全仓库(除本报告)无「?ns=」,命名空间解析只吃 path(internal/server/dispat",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "host_103",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "audit:pending:4e7161d06bec4de5fdae17ee4e514d09#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791816767889,
+  "updated": 1791816767889
+}

@@ -1,0 +1,248 @@
+{
+  "id": "f-3gzno8",
+  "goal": "g-mv5eqq0n96w2",
+  "hypothesis": "h-0afup5",
+  "text": "对候选的探测是并发发出的，决策等待时间不随候选数线性增长。",
+  "about": [
+    "svc_rms_103",
+    "sp_library_alpine",
+    "selection_probe",
+    "r_selection_probe_measures_existence",
+    "uq_alpine_via_primary",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103"
+  ],
+  "scope": "条件 上游=docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io、主机=192.168.188.103、出网=局域网代理 192.168.188.1:3128、客户端=docker/containerd 直连 103、部署方式=docker compose + 单个主端点 :5000",
+  "scope_spec": {
+    "conditions": {
+      "上游": "docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "refute_when": "实测两个上游收到请求的时间差与串行实现一致（差值 ≥ 第一个候选的响应延迟）。",
+  "level": "L3",
+  "evidence": [
+    "e-66xb6b",
+    "e-x19a6p"
+  ],
+  "evidence_records": [
+    {
+      "id": "e-66xb6b",
+      "step": "s2",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件是「两个上游收到请求的时间差与串行实现一致」。实测 5µs/8µs/22µs（阈值 50ms），且两候选各 150ms 时总耗时 150.8–151.1ms 而非 ≥300ms；真实上游一轮 6 个探测的发出时刻极差中位 0.12ms、最大 0.5ms，压缩比中位 3.58x。未命中推翻条件。",
+      "refs": [
+        "internal/selection/probe.go",
+        "internal/selection/chooser_test.go",
+        "internal/registry/manager.go",
+        "reports/raw/selection-real-upstream.txt",
+        "reports/raw/selection-notes.md",
+        "internal/upstream/selector.go",
+        "./internal/selection/"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "internal/selection/probe.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/selection/chooser_test.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/registry/manager.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-real-upstream.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-notes.md"
+        },
+        {
+          "kind": "artifact",
+          "path": "internal/upstream/selector.go"
+        },
+        {
+          "kind": "artifact",
+          "path": "./internal/selection/",
+          "from_basis": true
+        }
+      ],
+      "anchor": "artifact",
+      "basis_reviewable": true,
+      "at": 1791848153077
+    },
+    {
+      "id": "e-x19a6p",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "24 组 × 6 候选的 start_offset_ms 极差（spread）中位 0.152/0.145ms、逐组最大 0.405/0.479ms，而单次探测耗时 0.2–10s——两上游开始时间差远小于第一个候选的响应延迟，与串行实现不符；单测同一用例本次复跑 skew=71µs、总 Decide 151.146ms（两个各 150ms 候选，串行需 ≥300ms），原文 reports/raw/selection-concurrency-unit.txt:2 为 247µs、151.632ms。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true,
+      "at": 0
+    },
+    {
+      "t": "evidence/recorded",
+      "id": "e-x19a6p",
+      "step": "s5",
+      "plan": "p-mv5ewcefwt9a",
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "level": "L3",
+      "evaluator": "independent",
+      "basis": "24 组 × 6 候选的 start_offset_ms 极差（spread）中位 0.152/0.145ms、逐组最大 0.405/0.479ms，而单次探测耗时 0.2–10s——两上游开始时间差远小于第一个候选的响应延迟，与串行实现不符；单测同一用例本次复跑 skew=71µs、总 Decide 151.146ms（两个各 150ms 候选，串行需 ≥300ms），原文 reports/raw/selection-concurrency-unit.txt:2 为 247µs、151.632ms。",
+      "refs": [
+        "reports/raw/selection-gate-check.txt",
+        "reports/raw/selection-gate-race-e2e.txt",
+        "reports/raw/selection-unit-and-config.txt",
+        "reports/raw/selection-concurrency-stats.txt",
+        "reports/raw/103-selection-rollout-live.txt",
+        "reports/selection-verification.md",
+        "test/e2e/e2e_test.go"
+      ],
+      "origins": [
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-check.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-gate-race-e2e.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-unit-and-config.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/selection-concurrency-stats.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/raw/103-selection-rollout-live.txt"
+        },
+        {
+          "kind": "artifact",
+          "path": "reports/selection-verification.md"
+        },
+        {
+          "kind": "audit-card",
+          "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/7478a2cc6d60020ecdf2d0f52671f67372d7b590a7cae12239c492102f2f886b.json"
+        },
+        {
+          "kind": "evaluator-session",
+          "session": "270766c7-2a46-41e3-8c0a-f035e1be2dae"
+        },
+        {
+          "kind": "artifact",
+          "path": "test/e2e/e2e_test.go",
+          "from_basis": true
+        }
+      ],
+      "anchor": "auditor",
+      "basis_reviewable": true
+    }
+  ],
+  "assertions": [
+    {
+      "object": {
+        "id": "uq_alpine_via_primary",
+        "kind": "instance",
+        "result": "probed",
+        "type": "unqualified_request",
+        "value": "uq_alpine_via_primary"
+      },
+      "predicate": "r_selection_probe_measures_existence",
+      "subject": {
+        "id": "sp_library_alpine",
+        "type": "selection_probe"
+      }
+    }
+  ],
+  "definitions": {
+    "r_selection_probe_measures_existence": "fnv:87d8ae06",
+    "selection_probe": "fnv:e86823d8",
+    "unqualified_request": "fnv:bc2ac45f",
+    "host": "fnv:c9be710b",
+    "namespace": "fnv:206e9ab1",
+    "service": "fnv:90e8622b"
+  },
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "established",
+  "review": null,
+  "at": 1791854398362,
+  "history": [
+    {
+      "event": "promoted",
+      "at": 1791854398362,
+      "level": "L3"
+    }
+  ]
+}

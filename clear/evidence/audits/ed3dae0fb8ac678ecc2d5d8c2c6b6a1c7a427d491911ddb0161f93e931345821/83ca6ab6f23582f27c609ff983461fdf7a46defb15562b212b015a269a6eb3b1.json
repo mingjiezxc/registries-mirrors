@@ -1,0 +1,161 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "15f47c46-6eea-4f85-9770-300123bf1fc6",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:79 的 10 候选决策日志自称逐字取自 reports/raw/103-final-live-10ns.txt，但 10 格耗时中 9 格与该文件 :26 不符，且全库检索只命中这一行；工作区给出的异常清单没有登记这一条",
+      "matters": "yes"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:107 的 dhi.io=813.528ms 归给 reports/raw/103-final-live-10ns.txt 第 2 节，而该文件现值是 1.102377s（旧值见 clear/evidence/audits/…/c3939aff….json:58）——引用了已被覆盖的旧抓取，清单未登记",
+      "matters": "yes"
+    },
+    {
+      "what": "reports/selection-verification.md:109 把未命中缓存耗时写成「两份原始抓取各 3 次，2.49–7.47s」，而交付态抓取 reports/raw/103-final-live-10ns.txt:20-22 是 5.47/4.83/10.00s，超出该区间且已贴 probe_timeout(10s)",
+      "matters": "no"
+    },
+    {
+      "what": "clear/knowledge/negatives/n-u-i6k3wz.json:39 的排除理由仍写「24 格里只有…2 格翻转」，按 .probe/selection/raw-proxy.jsonl 与 raw-noaccept.jsonl 复算为 72 格中 6 格（reports/raw/selection-real-upstream.txt:112 已改）；所称「已写 Hindsight 更正」在记忆库中查不到（审计记录称 bank 写入为 0），该理由在工作区内不可核对",
+      "matters": "no"
+    },
+    {
+      "what": "q3 断言「101 对外发布的只剩 5000/9100」，但工作区没有任何 101 侧端口抓取（全部 0.0.0.0:5000 类读数都来自 103；101 侧只有 daemon.json/pull 记录），异常 7be7583f#u3 的排除理由只是文字断言",
+      "matters": "no"
+    },
+    {
+      "what": "四条判断的 uses 在 clear/goals/g-mv5eqq0n96w2.md:17-32 全被判 out_of_scope（x-h-nccqnt 等 scope 仍写 15000–15006），而 reports/selection-verification.md:63-67 仍以它们作为「与已有条目的关系」依据——引用绕过了适用性判定，报告:62 自述只做到一半",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "raw-proxy.jsonl shared-absent 组实测：registry-1.docker.io 401、ghcr.io/gcr.io token 端点 403、quay.io 拿票后 401，只有 docker.1ms.run/registry.k8s.io 回 404；probe.go 三分类与 TestAuthenticatedRefusalIsAbsence/TestServerErrorsAreNotAbsence/TestDecideDistinguishesNotFoundFromUnreachable 通过，103 交付态拼错镜像名回 404 NAME_UNKNOWN（103-final-live-10ns.txt:20-24）"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:101-107 记 dhi 镜像 302 到 HTML 落地页被当 manifest，修后媒体类型判定；单测 TestARedirectToAWebPageIsNotAManifest/TestHTMLWith200IsNotAManifest/TestARealManifestMediaTypeStillCounts 复跑通过，决策行显示 dhi.io=(absent:not-manifest-content:text/html)"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:91-99 记带仓库名 blob 被按 manifest 探测致 404，修复为 DecideBlobInRepo；probe.go 有该函数、单测 TestDecideBlobInRepoAsksTheBlobPath 复跑通过，真机 reports/raw/103-final-live.txt §4 三次 200（各 2206402 字节）"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:153-156 的「无人答复才 503」裁决有固定用例：TestDecideDistinguishesNotFoundFromUnreachable（one candidate answers 404 and one is unreachable）与 TestAFailingCandidateStillLosesToAnAnswer 复跑通过，103 拼错镜像名复验 404；代价写在报告 §七"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:129-133：镜像优先的排序被 103 决策行否证（ghcr.io/gcr.io 恒 unreachable:upstream-status），改官方优先后为 absent:auth-refused；reports/raw/daocloud-mirrors-probe.txt 显示九个镜像 /v2/ 0.17–0.21s 回 401 而 reports/raw/103-daocloud-namespaces-verify.txt:15 记同一镜像一个 20MB layer 取用 110.5s"
+    }
+  ],
+  "basis": "六条登记判据本身在副本里逐条复现成立：make check EXIT=0；e2e 顶层 11 RUN（10 PASS+1 SKIP）、RUN 行 29、0 FAIL；-race 通过（1.819s/6.230s）；namespaces.default/listeners 严格解码报错且 namespaces.selection 已加、dispatcher 接线与 GET/HEAD 重选一次在码内；仓库内 15000–15006 只余 README 迁移表；并发读数（proxy spread 中位 0.152ms、压缩比 3.53x；direct 0.145ms/3.80x）与 72 格中 6 格翻转都能从 raw jsonl 复算。但判据⑥的书面证据在两份报告里有两处与原文件不符且未登记：reports/selection-verification.md:71 自称下表逐字照抄 reports/raw/103-final-live-10ns.txt，:79 的 10 候选逐项耗时 10 格里 9 格与该文件第 26 行不同（且这些数字全库只出现在这一行）；reports/103-selection-rollout.md:107 的 dhi.io=813.528ms 在该文件里不存在（现为 1.102377s）。按「观测须与记录一致」，交付不成立。",
+  "shortfalls": [
+    {
+      "criterion": "⑥103 上重新部署并留下证据（selection 日志里的探测耗时），写入 reports/103-selection-rollout.md",
+      "what": "reports/selection-verification.md:71 写「下表每一行都逐字取自 reports/raw/103-final-live-10ns.txt」；:79 的 10 候选决策日志写 dhi.io=1.272152s、docker.elastic.co=3.106305s、docker.io=3.927883s、gcr.io=2.001655s、k8s.gcr.io=366.349ms、mcr=528.806ms、nvcr.io=3.043361s、quay.io=2.001795s、registry.k8s.io=363.955ms（只有 ghcr.io=885.498ms 一致）。该文件唯一的 10 候选行 :26 是 dhi.io=1.102377s、docker.elastic.co=2.320632s、docker.io=5.462858s、gcr.io=",
+      "missing": "把 :79 的逐候选耗时改成 :26 的现值（或改指真正的出处），并登记这处更正"
+    },
+    {
+      "criterion": "⑥（同一判据在 reports/103-selection-rollout.md 内的交付态证据）",
+      "what": "reports/103-selection-rollout.md:107 把「10 候选决策行里 dhi.io=813.528ms(absent:not-manifest-content:text/html)」归给 reports/raw/103-final-live-10ns.txt 第 2 节；该文件现无此值（:26 为 dhi.io=1.102377s）。813.528 只与更早一版该文件的行一致（clear/evidence/audits/ed3dae0fb8ac678ecc2d5d8c2c6b6a1c7a427d491911ddb0161f93e931345821/c3939aff….json:58 曾以 :24 引用它）。",
+      "missing": "按现行 raw 文件改正该数字或注明它取自已作废的旧抓取"
+    }
+  ],
+  "refs": [
+    {
+      "path": "/root/dev/registries-mirrors/reports/selection-verification.md",
+      "line": 79
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/raw/103-final-live-10ns.txt",
+      "line": 26
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/selection-verification.md",
+      "line": 71
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/103-selection-rollout.md",
+      "line": 107
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/103-selection-rollout.md",
+      "line": 89
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/raw/selection-gate-race-e2e.txt",
+      "line": 3
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/raw/selection-concurrency-stats.txt",
+      "line": 15
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "/root/dev/registries-mirrors/internal/selection/probe.go",
+      "line": 353
+    },
+    {
+      "path": "/root/dev/registries-mirrors/internal/selection/chooser.go",
+      "line": 38
+    },
+    {
+      "path": "/root/dev/registries-mirrors/internal/config/selection.go",
+      "line": 14
+    },
+    {
+      "path": "/root/dev/registries-mirrors/internal/server/dispatch.go",
+      "line": 495
+    },
+    {
+      "path": "/root/dev/registries-mirrors/test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "/root/dev/registries-mirrors/Dockerfile",
+      "line": 54
+    },
+    {
+      "path": "/root/dev/registries-mirrors/deploy/103/rms.yaml",
+      "line": 1
+    },
+    {
+      "path": "/root/dev/registries-mirrors/clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "/root/dev/registries-mirrors/clear/knowledge/negatives/n-u-i6k3wz.json",
+      "line": 39
+    },
+    {
+      "path": "/root/dev/registries-mirrors/reports/selection-verification.md",
+      "line": 109
+    },
+    {
+      "path": "/tmp/clearai-rerun-7eda1c2a140e02fe4c230097b34ba28807acbb2a1dc4061e8da5ae02c8b4ff70/Makefile",
+      "line": 15
+    }
+  ],
+  "card": "六条登记判据本身在副本里逐条复现成立：make check EXIT=0；e2e 顶层 11 RUN（10 PASS+1 SKIP）、RUN 行 29、0 FAIL；-race 通过（1.819s/6.230s）；namespaces.default/listeners 严格解码报错且 namespaces.selection 已加、dispatcher 接线与 GET/HEAD 重选一次在码内；仓库内 15000–15006 只余 README 迁移表；并发读数（proxy spread 中位 0.152ms、压缩比 3.53x；direct 0.145ms/3.80x）与 72 格中 6 格翻转都能从 raw jsonl 复算。但判据⑥的书面证据在两份报告里有两处与原文件不符且未登记：reports/selection-verification.md:71 自称下表逐字照抄 reports/raw/103-final-live-10ns.txt，:79 的 10 候选逐项耗时 10 格里 9 格与该文件第 26 行不同（且这些数字全库只出现在这一行）；reports/103-selection-rollout.md:107 的 dhi.io=813.528ms 在该文件里不存在（现为 1.102377s）。按「观测须与记录一致」，交付不成立。",
+  "created_at": 1791864761392,
+  "evaluator": "independent"
+}

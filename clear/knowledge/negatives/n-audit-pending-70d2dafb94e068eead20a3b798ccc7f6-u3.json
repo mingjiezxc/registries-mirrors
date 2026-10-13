@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-70d2dafb94e068eead20a3b798ccc7f6-u3",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "四条判断的 uses 全被判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32），根源是 x-h-nccqnt.json:20 的 scope 仍写「端口 5000/15000-15006/9100」；reports/selection-verification.md:63-67 仍以它们为「本次改动直接依据的既有记录」，而报告自称的两份 Hindsight 更正文档在记忆库与工作区均不可见。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "四条判断登记的 uses 全被判 out_of_scope，根源是 `x-h-nccqnt` 等条目的 scope 仍写「端口 5000/15000-15006/9100」。本次结论**不依赖**它们成立（证据是本次可重跑的门禁、单测、真实上游读数与交付态现场抓取）；它们作为先例需账本侧把 scope 重写为当前拓扑后重验。账本是系统文件，我不能改写；报告第三节已写明「引用前必读（scope 已过期）」与机制仍成立的部分。已同时写入答案的「尚未确定的事项」。交给人。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:70d2dafb94e068eead20a3b798ccc7f6#u3",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791864173662,
+  "updated": 1791864218426
+}

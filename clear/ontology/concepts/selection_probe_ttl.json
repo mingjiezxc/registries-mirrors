@@ -1,0 +1,7 @@
+{
+  "gloss": "namespaces.selection.probe_ttl：同一 (仓库,引用) 的决策在该时间内复用，不重复探测。",
+  "id": "selection_probe_ttl",
+  "kind": "measure",
+  "label": "选择缓存 TTL",
+  "unit": "s"
+}

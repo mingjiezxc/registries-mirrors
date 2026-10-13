@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-96b82650a3192caed41d4c01203a53ee-u1",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "reports/selection-verification.md:26-27 的 spread 中位 0.12ms、proxy 最大 0.3ms 与自称照抄的源文件 reports/raw/selection-real-upstream.txt:62-63（0.15ms / proxy 0.4ms）和原始读数 .probe/selection/raw-proxy.jsonl:1（复算中位 0.152ms、最大 0.405ms）都对不上；已登记的 u3 排除理由（clear/knowledge/negatives/n-audit-pending-1621fc7223a13af6ed09db99f63bea52-u3.json 称已改成逐字照抄 0.12ms）不成立。它直接是本次判据第 3 项不满足的原因。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者是对的，我上一版仍带着不可复算的数字（0.12ms / 0.3ms），并且在解释 u3 时说「已改成逐字照抄」也是错的——那是我的第二处转写错误。现在 reports/selection-verification.md 第二节改成**从原始数据复算**的值：proxy spread 中位 0.152ms / 最大 0.405ms、压缩比中位 3.53x（2.80x–4.68x）；direct spread 中位 0.145ms / 最大 0.479ms、压缩比中位 3.80x（3.00x–4.25x），并新增 reports/raw/selection-concurrency-stats.txt（含逐轮逐候选 start_offset_ms 表）与第八节里的复算命令，任何人可重跑复现同一组数字（我已实跑核对：输出与报告一致）。",
+    "by": "probe_concurrency_gap"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:96b82650a3192caed41d4c01203a53ee#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791853541751,
+  "updated": 1791862477395
+}

@@ -17,7 +17,6 @@ server:
 auth:
   type: none
 namespaces:
-  default: docker.io
   local: [me]
   proxy:
     docker.io:
@@ -70,6 +69,71 @@ func TestLoadMinimalAppliesDefaults(t *testing.T) {
 	}
 	if cfg.IsLocal("docker.io") {
 		t.Error("IsLocal(docker.io) = true, want false")
+	}
+
+	// The removal of namespaces.default made the selection knobs the only
+	// configuration for unqualified requests, so their defaults are pinned here:
+	// a zero probe timeout would make every unqualified request fail instantly.
+	if got, want := cfg.Namespaces.Selection.ProbeTTL.Std(), DefaultProbeTTL; got != want {
+		t.Errorf("namespaces.selection.probe_ttl = %v, want %v", got, want)
+	}
+	if got, want := cfg.Namespaces.Selection.ProbeTimeout.Std(), DefaultProbeTimeout; got != want {
+		t.Errorf("namespaces.selection.probe_timeout = %v, want %v", got, want)
+	}
+}
+
+// TestRemovedKeysAreRejected pins the expected migration behaviour: a
+// configuration written for the default-namespace/listener design must fail at
+// startup with the offending key named, not start with a silently different
+// routing rule.
+func TestRemovedKeysAreRejected(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		key  string
+	}{
+		{
+			name: "namespaces.default",
+			body: strings.Replace(minimal(), "namespaces:\n", "namespaces:\n  default: docker.io\n", 1),
+			key:  "default",
+		},
+		{
+			name: "listeners",
+			body: minimal() + `
+listeners:
+  - listen: "0.0.0.0:5001"
+    namespace: docker.io
+`,
+			key: "listeners",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeTemp(t, tc.body))
+			if err == nil {
+				t.Fatalf("expected a decode error for the removed key %q", tc.key)
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error should name %q, got: %v", tc.key, err)
+			}
+		})
+	}
+}
+
+// TestSelectionKnobsOverrideDefaults checks the two knobs are read from the file
+// when present, since they bound every unqualified request.
+func TestSelectionKnobsOverrideDefaults(t *testing.T) {
+	body := strings.Replace(minimal(), "namespaces:\n",
+		"namespaces:\n  selection:\n    probe_ttl: 5s\n    probe_timeout: 2s\n", 1)
+
+	cfg, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got, want := cfg.Namespaces.Selection.ProbeTTL.Std(), 5*time.Second; got != want {
+		t.Errorf("probe_ttl = %v, want %v", got, want)
+	}
+	if got, want := cfg.Namespaces.Selection.ProbeTimeout.Std(), 2*time.Second; got != want {
+		t.Errorf("probe_timeout = %v, want %v", got, want)
 	}
 }
 
@@ -145,11 +209,6 @@ func TestValidationErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "default namespace not defined",
-			mutate:  func(c *Config) { c.Namespaces.Default = "ghcr.io" },
-			wantErr: "namespaces.default",
-		},
-		{
 			name: "proxy key is not domain-like",
 			mutate: func(c *Config) {
 				c.Namespaces.Proxy["dockerhub"] = ProxyNamespace{Upstreams: []string{"https://example.com"}}
@@ -208,20 +267,6 @@ func TestValidationErrors(t *testing.T) {
 			name:    "no proxy namespaces at all",
 			mutate:  func(c *Config) { c.Namespaces.Proxy = map[string]ProxyNamespace{} },
 			wantErr: "at least one proxy namespace",
-		},
-		{
-			name: "duplicate listener",
-			mutate: func(c *Config) {
-				c.Listeners = []Listener{{Listen: "0.0.0.0:5000", Namespace: "docker.io"}}
-			},
-			wantErr: "declared twice",
-		},
-		{
-			name: "listener namespace unknown",
-			mutate: func(c *Config) {
-				c.Listeners = []Listener{{Listen: "0.0.0.0:5001", Namespace: "quay.io"}}
-			},
-			wantErr: "is not defined",
 		},
 		{
 			name: "metrics listener clashes with the registry",
@@ -304,44 +349,6 @@ func TestValidationErrors(t *testing.T) {
 	}
 }
 
-func TestEffectiveListeners(t *testing.T) {
-	body := minimal() + `
-listeners:
-  - listen: "0.0.0.0:5000"
-    namespace: ""
-  - listen: "0.0.0.0:5001"
-    namespace: docker.io
-  - listen: "0.0.0.0:5002"
-    external_url: "http://mirror.test:9000"
-`
-	cfg, err := Load(writeTemp(t, body))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	got := cfg.EffectiveListeners()
-	if len(got) != 3 {
-		t.Fatalf("got %d listeners, want 3: %+v", len(got), got)
-	}
-	if got[0].Listen != "0.0.0.0:5000" || got[0].Namespace != "" {
-		t.Errorf("primary listener = %+v", got[0])
-	}
-	if got[0].ExternalURL != "http://localhost:5000" {
-		t.Errorf("primary external url = %q", got[0].ExternalURL)
-	}
-	// 5001 is namespace-bound: its external URL inherits the primary host and
-	// takes the listener's own port.
-	if got[1].Namespace != "docker.io" {
-		t.Errorf("listener 5001 namespace = %q", got[1].Namespace)
-	}
-	if want := "http://localhost:5001"; got[1].ExternalURL != want {
-		t.Errorf("listener 5001 external url = %q, want %q", got[1].ExternalURL, want)
-	}
-	if want := "http://mirror.test:9000"; got[2].ExternalURL != want {
-		t.Errorf("listener 5002 external url = %q, want %q", got[2].ExternalURL, want)
-	}
-}
-
 func TestNamespaceHTTPOverrideInheritsDefaults(t *testing.T) {
 	// Written out in full rather than appended to minimal(): YAML forbids a
 	// duplicated mapping key, so "namespaces" cannot appear twice.
@@ -356,7 +363,6 @@ upstream:
     no_proxy: "10.82.0.0/16"
     dial_timeout: 3s
 namespaces:
-  default: docker.io
   proxy:
     docker.io:
       upstreams: ["https://registry-1.docker.io"]
@@ -397,8 +403,8 @@ func TestCommentsAreNotExpanded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse must ignore environment references inside comments: %v", err)
 	}
-	if cfg.Namespaces.Default != "docker.io" {
-		t.Errorf("Default = %q", cfg.Namespaces.Default)
+	if got, want := cfg.Namespaces.Selection.ProbeTTL.Std(), DefaultProbeTTL; got != want {
+		t.Errorf("probe_ttl = %v, want %v", got, want)
 	}
 }
 
@@ -412,7 +418,6 @@ server:
 auth:
   type: none
 namespaces:
-  default: docker.io
   proxy:
     docker.io:
       upstreams: ["https://registry-1.docker.io"]
@@ -435,7 +440,6 @@ server:
 auth:
   type: none
 namespaces:
-  default: docker.io
   proxy:
     docker.io:
       upstreams: ["https://registry-1.docker.io"]
@@ -500,5 +504,148 @@ func TestMetricsPathMustBeAbsolute(t *testing.T) {
 	err = cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "metrics.path") {
 		t.Fatalf("error = %v, want a metrics.path complaint", err)
+	}
+}
+
+// --- upstream racing and load balancing (namespaces.selection) --------------
+
+// racingConfig returns a configuration with several upstreams per namespace,
+// which is what the racing and balancing knobs exist for.
+func racingConfig(selection, dockerExtra, ghcrExtra string) string {
+	return `
+server:
+  listen: "0.0.0.0:5000"
+auth:
+  type: none
+namespaces:
+` + selection + `
+  local: [me]
+  proxy:
+    docker.io:
+      upstreams: ["https://docker.1ms.run", "https://registry-1.docker.io"]
+      official_library: true
+` + dockerExtra + `
+    ghcr.io:
+      upstreams: ["https://ghcr.io"]
+` + ghcrExtra
+}
+
+func TestRacingAndBalanceDefaults(t *testing.T) {
+	cfg, err := Parse([]byte(racingConfig("", "", "")))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if got, want := cfg.Namespaces.Selection.Balance, BalanceWeighted; got != want {
+		t.Errorf("selection.balance = %q, want %q", got, want)
+	}
+	if got, want := cfg.Namespaces.Selection.BalanceWindow, DefaultBalanceWindow; got != want {
+		t.Errorf("selection.balance_window = %v, want %v", got, want)
+	}
+	if got := cfg.Namespaces.Selection.DecisionDeadline.Std(); got != 0 {
+		t.Errorf("selection.decision_deadline = %v, want 0 (wait for every probe)", got)
+	}
+
+	// Racing is on unless switched off, and every namespace inherits the global
+	// balancing mode.
+	for _, ns := range []string{"docker.io", "ghcr.io"} {
+		if !cfg.RaceEnabledFor(ns) {
+			t.Errorf("RaceEnabledFor(%s) = false, want true by default", ns)
+		}
+		if got, want := cfg.BalanceFor(ns), BalanceWeighted; got != want {
+			t.Errorf("BalanceFor(%s) = %q, want %q", ns, got, want)
+		}
+	}
+}
+
+func TestRacingKnobsParseAndOverride(t *testing.T) {
+	body := racingConfig(`
+  selection:
+    probe_ttl: 45s
+    probe_timeout: 6s
+    decision_deadline: 2s
+    balance: round_robin
+    balance_window: 2.5
+`, `
+      upstream_race: false
+`, `
+      balance: off
+`)
+	cfg, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	sel := cfg.Namespaces.Selection
+	if got, want := sel.ProbeTTL.Std(), 45*time.Second; got != want {
+		t.Errorf("probe_ttl = %v, want %v", got, want)
+	}
+	if got, want := sel.DecisionDeadline.Std(), 2*time.Second; got != want {
+		t.Errorf("decision_deadline = %v, want %v", got, want)
+	}
+	if got, want := sel.Balance, BalanceRoundRobin; got != want {
+		t.Errorf("balance = %q, want %q", got, want)
+	}
+	if got, want := sel.BalanceWindow, 2.5; got != want {
+		t.Errorf("balance_window = %v, want %v", got, want)
+	}
+
+	if cfg.RaceEnabledFor("docker.io") {
+		t.Error("docker.io set upstream_race: false but RaceEnabledFor reports true")
+	}
+	if !cfg.RaceEnabledFor("ghcr.io") {
+		t.Error("ghcr.io did not opt out but RaceEnabledFor reports false")
+	}
+	if got, want := cfg.BalanceFor("docker.io"), BalanceRoundRobin; got != want {
+		t.Errorf("BalanceFor(docker.io) = %q, want the inherited %q", got, want)
+	}
+	if got, want := cfg.BalanceFor("ghcr.io"), BalanceOff; got != want {
+		t.Errorf("BalanceFor(ghcr.io) = %q, want the override %q", got, want)
+	}
+}
+
+func TestRacingValidationRejectsBadKnobs(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "unknown global balance mode",
+			body: racingConfig("\n  selection:\n    balance: fastest\n", "", ""),
+			want: "namespaces.selection.balance",
+		},
+		{
+			name: "unknown per-namespace balance mode",
+			body: racingConfig("", "\n      balance: fastest\n", ""),
+			want: "namespaces.proxy[docker.io].balance",
+		},
+		{
+			name: "balance window below one",
+			body: racingConfig("\n  selection:\n    balance_window: 0.5\n", "", ""),
+			want: "namespaces.selection.balance_window",
+		},
+		{
+			name: "deadline longer than the probe it bounds",
+			body: racingConfig("\n  selection:\n    probe_timeout: 5s\n    decision_deadline: 6s\n", "", ""),
+			want: "decision_deadline",
+		},
+		{
+			name: "negative deadline",
+			body: racingConfig("\n  selection:\n    decision_deadline: -1s\n", "", ""),
+			want: "decision_deadline",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse([]byte(tc.body))
+			if err == nil {
+				t.Fatalf("expected an error mentioning %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
 	}
 }

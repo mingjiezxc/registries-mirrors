@@ -7,14 +7,16 @@ import (
 	"github.com/watsons/rms/internal/config"
 )
 
-// testConfig mirrors the shape the README documents: docker.io as the default
-// proxy namespace with library/ injection, two more proxy namespaces, and two
-// writable local namespaces.
+// testConfig mirrors the shape the deploy configuration uses: two proxy
+// namespaces with official_library on docker.io, one without, and two writable
+// local namespaces.
+//
+// There is deliberately no default: an unqualified request is decided by the
+// selector, not by the table.
 func testConfig() *config.Config {
 	return &config.Config{
 		Namespaces: config.Namespaces{
-			Default: "docker.io",
-			Local:   []string{"me"},
+			Local: []string{"me"},
 			Proxy: map[string]config.ProxyNamespace{
 				"docker.io":       {Upstreams: []string{"https://registry-1.docker.io"}, OfficialLibrary: true},
 				"ghcr.io":         {Upstreams: []string{"https://ghcr.io"}},
@@ -45,6 +47,7 @@ func TestResolve(t *testing.T) {
 		wantKind   Kind
 		wantEngine string
 		wantRepo   string
+		wantSelect bool
 	}{
 		// --- base -----------------------------------------------------------
 		{
@@ -101,23 +104,38 @@ func TestResolve(t *testing.T) {
 			wantEngine: "/v2/library/alpine/tags/list", wantRepo: "library/alpine",
 		},
 
-		// --- default namespace rewrite (requirement 4) -----------------------
+		// --- unqualified requests are marked for the selector ---------------
+		//
+		// They are no longer rewritten to a default namespace: the resolver
+		// leaves the repository exactly as the client wrote it and sets
+		// NeedsSelection so the dispatcher asks the selector. The library/
+		// injection is a per-candidate rule and therefore does not appear here.
 		{
-			name:   "unqualified user repo falls back to docker.io",
+			name:   "unqualified user repo needs selection",
 			path:   "/v2/someuser/app/manifests/v1",
-			wantNS: "docker.io", wantMode: config.ModeProxy, wantKind: KindRepository,
-			wantEngine: "/v2/someuser/app/manifests/v1", wantRepo: "someuser/app",
+			wantNS: "", wantMode: "", wantKind: KindRepository,
+			wantEngine: "", wantRepo: "someuser/app", wantSelect: true,
 		},
 		{
-			name:   "unqualified single segment becomes a library image",
+			name:   "unqualified single segment is not rewritten to library",
 			path:   "/v2/alpine/manifests/latest",
-			wantNS: "docker.io", wantMode: config.ModeProxy, wantKind: KindRepository,
-			wantEngine: "/v2/library/alpine/manifests/latest", wantRepo: "library/alpine",
+			wantNS: "", wantMode: "", wantKind: KindRepository,
+			wantEngine: "", wantRepo: "alpine", wantSelect: true,
 		},
 		{
 			name: "unqualified official library explicit", path: "/v2/library/nginx/manifests/latest",
-			wantNS: "docker.io", wantMode: config.ModeProxy, wantKind: KindRepository,
-			wantEngine: "/v2/library/nginx/manifests/latest", wantRepo: "library/nginx",
+			wantNS: "", wantMode: "", wantKind: KindRepository,
+			wantEngine: "", wantRepo: "library/nginx", wantSelect: true,
+		},
+		{
+			name: "unqualified tags list needs selection", path: "/v2/library/nginx/tags/list",
+			wantNS: "", wantMode: "", wantKind: KindRepository,
+			wantEngine: "", wantRepo: "library/nginx", wantSelect: true,
+		},
+		{
+			name: "unqualified blob needs selection", path: "/v2/alpine/blobs/sha256:abc",
+			wantNS: "", wantMode: "", wantKind: KindRepository,
+			wantEngine: "", wantRepo: "alpine", wantSelect: true,
 		},
 
 		// --- local namespaces keep the prefix (pushable) --------------------
@@ -219,6 +237,9 @@ func TestResolve(t *testing.T) {
 			if got.Repo != tc.wantRepo {
 				t.Errorf("Repo = %q, want %q", got.Repo, tc.wantRepo)
 			}
+			if got.NeedsSelection != tc.wantSelect {
+				t.Errorf("NeedsSelection = %v, want %v", got.NeedsSelection, tc.wantSelect)
+			}
 		})
 	}
 }
@@ -274,9 +295,6 @@ func TestTablePredicates(t *testing.T) {
 	}
 	if !tbl.IsProxy("docker.io") {
 		t.Error("docker.io should be a proxy namespace")
-	}
-	if got, want := tbl.Default(), "docker.io"; got != want {
-		t.Errorf("Default() = %q, want %q", got, want)
 	}
 
 	want := []string{"alice", "me", "shared"}

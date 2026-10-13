@@ -10,6 +10,11 @@
 coverage.out
 *.log
 
+# Scratch space for local probes and live acceptance runs. It accumulates
+# copies of deployment artifacts — including htpasswd files and host configs —
+# and must never be committed.
+/.probe/
+
 # Local overrides
 .env
 .env.local

@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-f088128aa7cdc987b608e247a1bf6363-u5",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "知识条目 scope 过期未被任何可见产物更正:报告 §三:63-65 引用的 x-h-nccqnt / n-u-s01do2 / n-u-iiyp8u 的 scope 仍写「端口 5000/15000-15006/9100」(clear/knowledge/negatives/x-h-nccqnt.json:20、:23),而 clear/goals/g-mv5eqq0n96w2.md:17/:22/:27/:32 把这四条 uses 判为 out_of_scope;n-audit-pending-a72c74b22d100285f50ae98cf762186a-u3.json:32 的排除理由称「已写入更正文档(Hindsight: Correction… doc_id 以 correction-103-15000-15006-namespaces-default-- 开头)」,但全库",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "这条现在有可见产物了：reports/selection-verification.md 第三节的「与已有条目的关系」开头新增一段「引用前必读（scope 已过期）」，明确写出那三条 negatives 的 scope 记录的是旧拓扑、机制仍成立、哪些表述应读作历史，并列出来源两份更正文档（Hindsight：Correction: 103 的端口拓扑与无限定请求语义已变；Correction: 账本两处措辞过期）。账本 JSON 本身是系统文件（工作区里只有本体目录归模型编辑），所以不以改写 JSON 落地——报告里也写明了这一点。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:f088128aa7cdc987b608e247a1bf6363#u5",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791855342844,
+  "updated": 1791862477396
+}

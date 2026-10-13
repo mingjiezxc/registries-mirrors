@@ -1,0 +1,188 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "evidence_audit",
+  "step_id": "s5",
+  "auditor_run_id": "5695cc73-f79a-4305-bc53-5d82e136f839",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [
+    {
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "basis": "推翻条件未复现：真实上游复跑 native 组六个候选各自 200 exists（含慢的 registry.k8s.io 5.96s、gcr.io 3.97s 也判 exists，即「存在但慢」被正确区分），shared/absent 组按仓库名正确判 absent；103 现场无限定拼错名五候选全 absent、已缓存名 winner=docker.io；e2e「只有一个 namespace 有它就胜」「另一个 namespace 为它自己的仓库胜」通过，未见「有镜像的 namespace 未被选中」。"
+    },
+    {
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "basis": "推翻条件（两上游收到请求的时间差 ≥ 第一个候选的响应延迟）未出现：真实上游复跑六候选 start_ms 50.1–50.5ms、每轮 spread 0.1–0.2ms，而单个候选耗时 1.2–8.3s，serial÷wall 3.11–4.19x；单测 skew 59µs、Decide 151.098ms（串行下界 300ms）。"
+    },
+    {
+      "hypothesis": "h-7yrf0w",
+      "verdict": "support",
+      "basis": "103 现场 GET /v2/library/definitely-not-here-rms-eval2/manifests/latest → HTTP/1.1 404 且 body 为 {\"errors\":[{\"code\":\"NAME_UNKNOWN\",…}]}，同一请求决策日志五候选全 absent、无 unreachable；e2e「a missing tag is NAME_UNKNOWN, not UNAVAILABLE」与单测（五候选混合 401/403/404 全 absent ⇒ ErrNotFound）均通过；未见 200、5xx 或其它错误码。"
+    },
+    {
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "basis": "严格解码按预期拒绝旧配置（我在拷本里用新二进制复跑：old-default.yaml:4 → field default not found in type config.Namespaces；old-listeners.yaml:7 → field listeners not found in type config.Config），现行 config/rms.yaml 校验 ok，103 运行中镜像 sha256:b2a9c2b846ca… 与上线记录一致、只发布 5000/9100、15000–15006 全部拒绝、/readyz 200、:5000/v2/ 401 Basic；e2e 复跑 9/9 顶层 PASS（login/push/catalog/degraded/显式 namespace 路径均通过）、0 FAIL。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:26-27 的 spread 中位 0.12ms、proxy 最大 0.3ms 与自称照抄的源文件 reports/raw/selection-real-upstream.txt:62-63（0.15ms / proxy 0.4ms）和原始读数 .probe/selection/raw-proxy.jsonl:1（复算中位 0.152ms、最大 0.405ms）都对不上；已登记的 u3 排除理由（clear/knowledge/negatives/n-audit-pending-1621fc7223a13af6ed09db99f63bea52-u3.json 称已改成逐字照抄 0.12ms）不成立。它直接是本次判据第 3 项不满足的原因。",
+      "matters": "yes"
+    },
+    {
+      "what": "reports/selection-verification.md:58 记「grep 仅命中 deploy/103/README.md」，但 1500[0-6] 在全仓库还命中 reports/raw/baseline.txt（25 处）、reports/103-cutover-verify.md（23 处）、clear/goals/*.md、clear/ontology/entities/*.json 等历史材料；结论本身不变——config/、deploy/103/rms.yaml 与 103 在线配置 /opt/stacks/rms/config/rms.yaml 里确无端口映射与 listeners/default 键。",
+      "matters": "no"
+    },
+    {
+      "what": "u2 的排除理由称「两份记录现已改成区间表述（2.6–5.2s）」，但 reports/selection-verification.md:77 仍写 2.6–3.8s、reports/103-selection-rollout.md:86 仍写约 3.3–3.8s，只有 :49/:51 是 2.6–5.2s；抖动本身我复跑确认（103 本次 2.73s，前次 5.19s）。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/selection-verification.md:15 的「9 用例、28 子测试」口径不严：我复跑 e2e 得到 10 个顶层 RUN（1 个 SKIP）、18 个子测试、RUN 行合计 28，28 是 RUN 总数而非子测试数。",
+      "matters": "no"
+    },
+    {
+      "what": "四条判断的 uses 全为空，报告也未引用 clear/knowledge/negatives/x-h-nccqnt.json:5（preliminary_excluded）与 n-u-iiyp8u.json：它们记的正是「镜像站的 /v2/ 401 挑战让 dockerd 放弃该镜像站、回落官方 Hub」，而本次上线按 reports/103-selection-rollout.md:9 建议客户端把 registry-mirrors 指向 103:5000，同时 :41/reports/selection-verification.md:51 把该 401 挑战记为「未变」的正面读数——新单端点下 dockerd 是否仍走 rms 未经本步检验（不属四条判断范围）。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [],
+  "basis": "交付不成立(no)：四条判断都拿到独立证据支持，但登记判据里「真实上游并发探测的逐候选耗时与开始时间差表格」有读数不真实。任务书指定的复跑副本 /tmp/clearai-rerun-… 不存在（每次 bash 调用 /tmp 都是私有的，副本跨调用无法存活），我自行把工作区拷到 /tmp 后在拷本里复跑：make check 退出 0（12 包 ok + 2 包 no test files）、race selection ok 1.645s、race server ok 6.070s、e2e ok 4.537s（顶层 9 PASS/1 SKIP、0 FAIL）；真实上游探针复跑（proxy，2 轮）：六候选 start_ms 50.1–50.5ms、每轮 spread 0.1–0.2ms、单候选耗时 1.2–8.3s、serial/wall 压缩比 3.11–4.19x，native 组六个各 200 exists（慢的 registry.k8s.io 5.96s、gcr.io 3.97s 也判 exists），shared 组 library/alpine 只有 docker.1ms.run 与 registry-1.docker.io exists；并只读复验 103：容器 rms:dev sha256:b2a9c2b846ca… 只发布 5000/9100、15000–15006 全部拒绝、/readyz 200、五个 rms_namespace_up=1、:5000/v2/ 401 Basic、无限定拼错镜像名 404 NAME_UNKNOWN 且决策日志五候选全 absent、无仓库名 blob 200。缺陷在读数保真：reports/selection-verification.md:26-27 表头自称「值（照抄源文件）」，但 spread 中位 0.12ms、proxy 最大 0.3ms 既非源文件读数（:62-63 为 0.15ms/0.4ms）、也非原始数据复算值（raw-proxy.jsonl 中位 0.152ms、最大 0.405ms），全仓库搜不到这两个数；已登记为 u3「已修」的排除理由（改成逐字照抄 0.12ms）与产物、源文件都矛盾。make check 的「通过输出」也只是一句概括。工程实质我未能推翻。",
+  "shortfalls": [
+    {
+      "criterion": "判定标准第 3 项「真实上游并发探测的逐候选耗时与开始时间差表格」",
+      "what": "reports/selection-verification.md:26-27 的表头写「值（照抄源文件）」，但 spread 中位记 0.12ms、proxy 最大值记 0.3ms；其自称来源 reports/raw/selection-real-upstream.txt:62-63 写 0.15ms / proxy 0.4ms，原始数据 .probe/selection/raw-proxy.jsonl:1 复算为 0.152ms / 0.405ms；0.12ms 与 0.3ms 在仓库任何文件里都搜不到。",
+      "missing": "把这两个读数改成能从源文件或原始 jsonl 复算的值（或直接给出逐候选 start_offset_ms/start_ms 的表格），并更正 u3 的「已按逐字照抄修正」结论。"
+    },
+    {
+      "criterion": "判定标准第 1 项「make check 与 race 的通过输出」",
+      "what": "reports/selection-verification.md:13 只有一句概括「make check → go fmt / go vet / go test ./... 全绿（12 包）」，没有任何一行的 make check 实际输出（我复跑得到 12 条 ok + 2 条 no test files）；:14-15 的 race/e2e 也只是带 ok 与耗时的转写，省略包名。",
+      "missing": "make check（必要时含 race/e2e）的实际输出原文落盘或抄进报告，使第三方能从报告本身核对跑的是哪些命令与包。"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 13
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 15
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 18
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 26
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 27
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 49
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 50
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 57
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 77
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 62
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 63
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 213
+    },
+    {
+      "path": ".probe/selection/raw-proxy.jsonl",
+      "line": 1
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 8
+    },
+    {
+      "path": "clear/knowledge/negatives/n-audit-pending-1621fc7223a13af6ed09db99f63bea52-u3.json",
+      "line": 5
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 5
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 5
+    },
+    {
+      "path": ".probe/config-check/old-default.yaml",
+      "line": 4
+    },
+    {
+      "path": ".probe/config-check/old-listeners.yaml",
+      "line": 7
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 140
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 245
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 485
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 383
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 481
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 695
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 55
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 86
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    }
+  ],
+  "card": "交付不成立(no)：四条判断都拿到独立证据支持，但登记判据里「真实上游并发探测的逐候选耗时与开始时间差表格」有读数不真实。任务书指定的复跑副本 /tmp/clearai-rerun-… 不存在（每次 bash 调用 /tmp 都是私有的，副本跨调用无法存活），我自行把工作区拷到 /tmp 后在拷本里复跑：make check 退出 0（12 包 ok + 2 包 no test files）、race selection ok 1.645s、race server ok 6.070s、e2e ok 4.537s（顶层 9 PASS/1 SKIP、0 FAIL）；真实上游探针复跑（proxy，2 轮）：六候选 start_ms 50.1–50.5ms、每轮 spread 0.1–0.2ms、单候选耗时 1.2–8.3s、serial/wall 压缩比 3.11–4.19x，native 组六个各 200 exists（慢的 registry.k8s.io 5.96s、gcr.io 3.97s 也判 exists），shared 组 library/alpine 只有 docker.1ms.run 与 registry-1.docker.io exists；并只读复验 103：容器 rms:dev sha256:b2a9c2b846ca… 只发布 5000/9100、15000–15006 全部拒绝、/readyz 200、五个 rms_namespace_up=1、:5000/v2/ 401 Basic、无限定拼错镜像名 404 NAME_UNKNOWN 且决策日志五候选全 absent、无仓库名 blob 200。缺陷在读数保真：reports/selection-verification.md:26-27 表头自称「值（照抄源文件）」，但 spread 中位 0.12ms、proxy 最大 0.3ms 既非源文件读数（:62-63 为 0.15ms/0.4ms）、也非原始数据复算值（raw-proxy.jsonl 中位 0.152ms、最大 0.405ms），全仓库搜不到这两个数；已登记为 u3「已修」的排除理由（改成逐字照抄 0.12ms）与产物、源文件都矛盾。make check 的「通过输出」也只是一句概括。工程实质我未能推翻。",
+  "created_at": 1791852001862,
+  "evaluator": "independent"
+}

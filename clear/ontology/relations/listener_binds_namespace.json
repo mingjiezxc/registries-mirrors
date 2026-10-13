@@ -1,0 +1,8 @@
+{
+  "check": "rms 配置 listeners[].namespace",
+  "domain": "ns_port_binding",
+  "id": "listener_binds_namespace",
+  "kind": "defines",
+  "label": "监听端口绑定 namespace",
+  "range": "namespace"
+}

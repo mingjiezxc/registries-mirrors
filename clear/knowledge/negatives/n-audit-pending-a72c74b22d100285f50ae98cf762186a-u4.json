@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-a72c74b22d100285f50ae98cf762186a-u4",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "四条判断的 uses 全为空（clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32），而报告直接引用了 clear/knowledge 的 x-h-nccqnt / n-u-iiyp8u / n-u-s01do2（reports/selection-verification.md:63-65）——引用绕过了适用性判定，audit:pending:96b82650…#u5 的排除理由（「在报告侧补写说明」）没有解决 uses 本身为空。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "已按评估者意见补齐：用一次 Frame 修订（目标 rev5）给四条判断登记了 uses —— 「并发选最快」用 x-h-nccqnt、n-u-s01do2、n-u-iiyp8u；「探测并发性」用 n-u-l136s0；「全无则 404」用 x-h-nccqnt；「删端口不破主流程」用 x-h-nccqnt、n-u-s01do2。系统提示这些条目的 scope 属旧拓扑（上游列表少了 docker.1ms.run、部署方式写的是多端口），需要在本次范围内复检后使用；报告第三节已逐条写明它们的机制在本次仍然成立、以及哪些表述应视为历史。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:a72c74b22d100285f50ae98cf762186a#u4",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791854861449,
+  "updated": 1791862477396
+}

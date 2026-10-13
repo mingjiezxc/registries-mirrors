@@ -1,0 +1,223 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "evidence_audit",
+  "step_id": "cutover-verify",
+  "auditor_run_id": "a16d7854-f453-43ea-b173-ba8d26677326",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [
+    {
+      "hypothesis": "h-jixcpd",
+      "verdict": "support",
+      "basis": "报告 reports/103-cutover-verify.md:59-64 给出两次 alpine:3.20 的 blob 响应 1.051369ms / 8.009597ms 且 rms_cache_hits_total{docker.io}=5,没有出现 404 或回源重下;alpine:3.20 确实在被迁缓存里有旁证(reports/mirror-probe-103.md:40「旧缓存里只有 3.18.2 / 3.20 / latest」)。但「拉取前该样本不存在」没有原始读数,「命中计数增长」这半只有毫秒级 blob 作佐证。"
+    },
+    {
+      "hypothesis": "h-nccqnt",
+      "verdict": "support",
+      "basis": "报告 :84-96 的 101 拉取(19.572s、digest 0f2d5c38…)对应 :92-95 的 rms 请求记录(同一仓库/清单/层),推翻条件「pull 成功但 rms 无该镜像请求」未命中;103 侧只有 :73-75 的耗时表与 :100-103 按客户端 IP 的聚合两行,没有逐请求记录,且 :92-95 的记录格式与 ?ns= 参数不可能由 rms 产生(见 anomalies),故支持的证据质量打折。"
+    },
+    {
+      "hypothesis": "h-te6zsh",
+      "verdict": "support",
+      "basis": "deploy/103/rms.yaml:104-115 的 listeners(15003 gcr.io、15004 ghcr.io、15005 registry.k8s.io、15006 quay.io)与报告 :41-48 的分派表一致,:22-25 四个端口 /v2/ 均 200;推翻条件「某端口拉取失败或内容写进非预期 namespace 目录」未见。但 15004/15006 只有清单级 200,落盘位置是文字断言而非原始 ls/du。"
+    },
+    {
+      "hypothesis": "h-nzvcx2",
+      "verdict": "inconclusive",
+      "basis": "推翻条件(namespace_up 取 0 或 /readyz 报降级)未命中::31-37 五个 namespace_up=1、:12-13 readyz=ready。但同一「不配代理」时段报告自己记了 docker.io 5 次 500、单次拉取 4 分钟(:109-121,以及 u-s01do2 的 busybox 连续 6 次重试 500),最终部署配置又改成配代理(deploy/103/.env:35),而 :31-37 的读数发生在改代理之前还是之后报告未说明——这次观测区分不了「不配代理时五个 namespace 都能拉到镜像」。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "reports/103-cutover-verify.md:89-95 的「rms 侧对应记录」不是 rms 能产生的输出:rms 自身日志是 slog JSON(internal/obs/logging.go:36-37),内嵌 registry 的访问日志是 logrus JSON、字段为 http.request.uri/http.response.* (internal/obs/logging.go:79-80;reports/103-stage-smoke.md:61-62 就是这种 JSON),而这里写成「HEAD …?ns=docker.io status=200 dur=1.66s」;且 `strings -a bin/rms | grep '?ns='` 命中数 0,全仓库(除本报告)无「?ns=」,命名空间解析只吃 path(internal/server/dispat",
+      "matters": "yes"
+    },
+    {
+      "what": "deploy/103/.env:3 写「**没有任何 *_PROXY 变量**」,但 :35 设了 RMS_UPSTREAM_PROXY=http://192.168.188.1:3128;deploy/103/rms.yaml:9 同样写「不配置出网代理(.103 直连公共仓库)」而 :130 读 ${RMS_UPSTREAM_PROXY:-};deploy/103/docker-compose.yml:7 与 deploy/103/README.md:24 仍写「daocloud → 1ms → 官方」,而 rms.yaml:66-68 已改成 1ms → 官方(daocloud 被删)。报告 §1(:31-37)的 namespace_up 读数没有说明是在改代理之前还是之后取得,而这正是 h-nzvcx2 的前提(「不配 HTTP 代理」)。",
+      "matters": "yes"
+    },
+    {
+      "what": "clear/knowledge/negatives/x-h-nccqnt.json 已把 h-nccqnt 标为 preliminary_excluded,附 L2 自评证据 e-w9gfyi(「整次拉取前后 rms 请求指标无差异、日志 108→108 行」);本步重验该判断后,四条判断的 uses 仍全为空(clear/goals/g-mv59mcuvcjiz.md:12,17,22,27),没有引用这条已有条目做适用性判定。",
+      "matters": "unclear"
+    },
+    {
+      "what": "报告正文 §1-§5 对切换后的可用性只给正面读数,而 .probe/after.txt:3 记有同期一条 HEAD manifests 404(已登记为 u-e1im6x、开着),报告全文未提;§3 用同一批「命中」观测下结论说「层数据全部由本地磁盘吐出,没有回源重下」。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [],
+  "basis": "交付不成立(no):实质工作大体可信(容器 healthy、15000–15006 已接管、旧缓存直用、101 侧拉取有 rms 侧痕迹),但已登记判据「报告里逐条给出命令与原始输出」没有逐条满足——7 端口矩阵只有一张状态表、无任何逐端口原始输出(15000/15001/15002 并作一行、9100 记「—」),103 侧未缓存拉取只有耗时表、缺该次 pull 的原始输出与其 rms 逐请求记录,「缓存增长」只有「落盘」二字;§5 用来证明 101 请求落到 rms 的那段记录不是 rms 能产生的输出(自身 slog JSON、内嵌 registry 为 logrus JSON,全仓库与 bin/rms 均无「?ns=」,命名空间解析只吃 path),并附了一句仓库里查不到的「docker 请求带 ?ns= 参数」;目标判据⑥「15000 /v2/ 返回 401 挑战」与实测 200 相反(报告给了理由,但判据未修订);本步指定的复跑副本 /tmp/clearai-rerun-15c7d35f… 不存在,无法独立复跑。四项判断:h-jixcpd/h-nccqnt/h-te6zsh 支持,h-nzvcx2 这次区分不了。",
+  "shortfalls": [
+    {
+      "criterion": "判定标准「报告里逐条给出命令与原始输出:7 个端口的 401/200 与分派结果」",
+      "what": "reports/103-cutover-verify.md:18-26 只有一张状态表,15000/15001/15002 合并为一行、9100 记「—」,没有任何逐端口的 curl 命令与响应原文;:41-48 的「落盘位置(核对)」是文字断言,无 ls/du 原始输出。报告里唯一的原始输出块是 :8-13 的 compose ps/inspect/readyz。",
+      "missing": "15000–15006 逐个端口的原始 HTTP 响应与各 namespace 缓存目录的原始 ls/du 输出"
+    },
+    {
+      "criterion": "判定标准「101 与 103 两处拉到未缓存镜像且 rms 侧有记录」",
+      "what": ":73-75 的 103 侧只有耗时表(alpine:3.16 6m06s / alpine:3.15 4m40s,「成功,落盘」),没有 docker pull 的原始输出,也没有这两次拉取对应的 rms 逐请求记录;:100-103 只有「192.168.188.103 14 次请求 镜像: library/alpine」这样的聚合两行,无客户端地址/时间;:92-95 的 101 侧记录未标客户端来源。",
+      "missing": "103 侧 pull 的原始输出与在 rms 侧的逐请求记录(含客户端/时间),以及与 101 侧记录的来源归属"
+    },
+    {
+      "criterion": "步骤定义「核对 rms 侧记录与缓存增长」/ 目标判据⑤「缓存目录/缓存命中指标随之变化」",
+      "what": ":73-75 只写「成功,落盘」,全文没有任何拉取前后 /opt/stacks/rms/data 的体积或文件数(§3 :59-64 只有指标样本)。",
+      "missing": "未缓存拉取前后的缓存目录增长数字(du/文件数或对应 namespace 目录的新增对象)"
+    },
+    {
+      "criterion": "目标判据⑥「curl -i http://192.168.188.103:15000/v2/ 返回 401 挑战」",
+      "what": ":21 记 15000/15001/15002 = 200 无挑战;:120-122、deploy/103/rms.yaml:6-7、deploy/103/README.md:14 给出理由(anonymous_root,依据 reports/mirror-probe-103.md:7-16:401 会把 dockerd 赶回官方 Hub)。",
+      "missing": "该判据的正式修订(系统侧 criteria/revised),否则需给出满足原判据的观测"
+    },
+    {
+      "criterion": "h-jixcpd 推翻条件中的「rms_cache_hits_total 不增长」/ 判定标准「命中指标增长」",
+      "what": ":64 只给拉取后的 rms_cache_hits_total{docker.io}=5,并附一句「拉取前该样本不存在 → 命中计数增长」,没有拉取前的 metrics 原始读数或任何 before/after 记录。",
+      "missing": "拉取前后的两次 rms_cache_hits_total 原始读数(或明确声明只用「毫秒级 blob 响应」这一支证据)"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 18
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 21
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 31
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 41
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 58
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 73
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 89
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 100
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 109
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 120
+    },
+    {
+      "path": "reports/103-cutover-verify.md",
+      "line": 137
+    },
+    {
+      "path": "clear/goals/g-mv59mcuvcjiz.md",
+      "line": 6
+    },
+    {
+      "path": "clear/goals/g-mv59mcuvcjiz.md",
+      "line": 9
+    },
+    {
+      "path": "clear/goals/g-mv59mcuvcjiz.md",
+      "line": 14
+    },
+    {
+      "path": "clear/goals/g-mv59mcuvcjiz.md",
+      "line": 19
+    },
+    {
+      "path": "clear/goals/g-mv59mcuvcjiz.md",
+      "line": 24
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 1
+    },
+    {
+      "path": "deploy/103/.env",
+      "line": 3
+    },
+    {
+      "path": "deploy/103/.env",
+      "line": 35
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 9
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 66
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 104
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 130
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 7
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 24
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 112
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 120
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 177
+    },
+    {
+      "path": "internal/namespace/resolver.go",
+      "line": 155
+    },
+    {
+      "path": "internal/obs/logging.go",
+      "line": 37
+    },
+    {
+      "path": "internal/obs/logging.go",
+      "line": 79
+    },
+    {
+      "path": "reports/mirror-probe-103.md",
+      "line": 7
+    },
+    {
+      "path": "reports/mirror-probe-103.md",
+      "line": 40
+    },
+    {
+      "path": "reports/103-stage-smoke.md",
+      "line": 61
+    },
+    {
+      "path": ".probe/after.txt",
+      "line": 3
+    }
+  ],
+  "card": "交付不成立(no):实质工作大体可信(容器 healthy、15000–15006 已接管、旧缓存直用、101 侧拉取有 rms 侧痕迹),但已登记判据「报告里逐条给出命令与原始输出」没有逐条满足——7 端口矩阵只有一张状态表、无任何逐端口原始输出(15000/15001/15002 并作一行、9100 记「—」),103 侧未缓存拉取只有耗时表、缺该次 pull 的原始输出与其 rms 逐请求记录,「缓存增长」只有「落盘」二字;§5 用来证明 101 请求落到 rms 的那段记录不是 rms 能产生的输出(自身 slog JSON、内嵌 registry 为 logrus JSON,全仓库与 bin/rms 均无「?ns=」,命名空间解析只吃 path),并附了一句仓库里查不到的「docker 请求带 ?ns= 参数」;目标判据⑥「15000 /v2/ 返回 401 挑战」与实测 200 相反(报告给了理由,但判据未修订);本步指定的复跑副本 /tmp/clearai-rerun-15c7d35f… 不存在,无法独立复跑。四项判断:h-jixcpd/h-nccqnt/h-te6zsh 支持,h-nzvcx2 这次区分不了。",
+  "created_at": 1791816765221,
+  "evaluator": "independent"
+}

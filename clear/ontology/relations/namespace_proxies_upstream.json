@@ -1,0 +1,7 @@
+{
+  "domain": "namespace",
+  "id": "namespace_proxies_upstream",
+  "kind": "affects",
+  "label": "namespace 代理上游端点",
+  "range": "upstream"
+}

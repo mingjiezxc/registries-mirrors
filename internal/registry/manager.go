@@ -2,11 +2,17 @@
 // keeps proxy engines pointed at a healthy upstream.
 //
 // Local (writable) namespaces are built once at startup and never moved: they
-// serve from local storage and have no upstream. Proxy namespaces follow their
-// upstream election, so when an endpoint fails the engine is rebuilt against the
-// newly elected one. Rebuilding is safe because proxy namespaces run with cache
-// expiry disabled, which means no TTL scheduler is started and two engines
-// briefly sharing a storage root cannot conflict.
+// serve from local storage and have no upstream.
+//
+// Proxy namespaces hold one engine per upstream they have been asked to serve
+// from, built lazily on first use, plus the sticky engine their current election
+// chose and a read-only engine over their cache for when no upstream answers.
+// They all share the namespace's storage root, which is safe because proxy
+// namespaces run with cache expiry disabled, so no TTL scheduler is started and
+// two engines sharing a root cannot conflict; content is content-addressed and
+// written through a unique temporary file plus an atomic rename. The only
+// shared mutable object is a tag's link, and the selection layer's digest gate
+// is what keeps two engines from writing different content to it.
 package registry
 
 import (
@@ -18,10 +24,14 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/opencontainers/go-digest"
 
 	"github.com/watsons/rms/internal/config"
 	"github.com/watsons/rms/internal/namespace"
 	"github.com/watsons/rms/internal/registryapp"
+	"github.com/watsons/rms/internal/storage"
 	"github.com/watsons/rms/internal/upstream"
 )
 
@@ -212,17 +222,86 @@ func (m *Manager) newProxyNamespace(name string) (*proxyNamespace, error) {
 	}, nil
 }
 
-// Handler returns the engine for a namespace.
+// Handler returns the engine for a namespace, without choosing an upstream:
+// the sticky one (the namespace's current election) or the cache-only engine
+// that keeps cached content pullable while every upstream is down.
 func (m *Manager) Handler(ns string) (http.Handler, bool) {
+	return m.Engine(ns, "")
+}
+
+// Engine returns the engine bound to one of a namespace's upstreams, building
+// it on first use.
+//
+// One engine per (namespace, upstream) is what makes racing usable: a
+// distribution proxy engine accepts exactly one RemoteURL, fixed at
+// construction, so "serve from the fastest of several mirrors" needs one engine
+// per mirror. They share the namespace's storage root, which is safe for two
+// reasons: content is content-addressed and written through a unique temporary
+// file plus an atomic rename, and cache expiry is disabled for proxy namespaces
+// so no TTL scheduler is running. The one shared mutable object, a tag's link,
+// is written only by engines that agree on that tag's digest — that agreement
+// is what the selection's digest gate establishes before routing here.
+//
+// upstream == "" means "no choice was made" (a cached decision, or a caller
+// that does not race), and the namespace's sticky engine is used.
+//
+// A build failure is not fatal: the caller falls back to the sticky or
+// cache-only engine, so a mirror that dies between the probe and the build
+// still leaves its namespace able to serve what it has cached.
+func (m *Manager) Engine(ns, upstream string) (http.Handler, bool) {
 	if app, ok := m.local[ns]; ok {
 		return app, true
 	}
-	if p, ok := m.proxy[ns]; ok {
-		if app := p.current(); app != nil {
+	p, ok := m.proxy[ns]
+	if !ok {
+		return nil, false
+	}
+
+	if upstream != "" {
+		if app, err := p.engineFor(upstream); err == nil {
 			return app, true
+		} else {
+			m.log.Warn("upstream engine unavailable; falling back to the sticky one",
+				"namespace", ns, "upstream", upstream, "error", err)
 		}
 	}
+	if app, ok := p.fallback(); ok {
+		return app, true
+	}
 	return nil, false
+}
+
+// UpstreamsFor lists the upstream endpoints a content race may probe for a
+// namespace, in configuration order. It is one of the methods implementing
+// selection.Upstream.
+func (m *Manager) UpstreamsFor(namespace string) []string {
+	p, ok := m.proxy[namespace]
+	if !ok || p.selector == nil {
+		return nil
+	}
+	return p.selector.Upstreams()
+}
+
+// ObserveContentProbe folds the outcome of one content probe into an endpoint's
+// health, so a mirror whose API root answers while its content does not is
+// dropped from later races. It is one of the methods implementing
+// selection.Upstream.
+func (m *Manager) ObserveContentProbe(namespace, upstream string, answered bool, latency time.Duration, err error) {
+	p, ok := m.proxy[namespace]
+	if !ok || p.selector == nil {
+		return
+	}
+	p.selector.ObserveContentProbe(upstream, answered, latency, err)
+}
+
+// ContentBadUpstreams lists the upstreams of a namespace that are serving a
+// content-failure cooldown. It exists for the readiness/metrics surface.
+func (m *Manager) ContentBadUpstreams(namespace string) []string {
+	p, ok := m.proxy[namespace]
+	if !ok || p.selector == nil {
+		return nil
+	}
+	return p.selector.ContentBad()
 }
 
 // Degraded lists proxy namespaces that are not working pull-through caches,
@@ -249,6 +328,130 @@ func (m *Manager) CacheOnly() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Serving lists the proxy namespaces that can answer a read right now, sorted.
+//
+// It includes namespaces serving cached content only. They have no upstream to
+// probe, but they do answer from disk, so whether one can serve a given request
+// is settled by looking at that disk — see CachedManifest. Eligibility is
+// therefore not something this list decides on its own: the selection chooser
+// takes every namespace listed here as a candidate and finds out. A namespace
+// with no engine at all is excluded, because it answers 503 and cannot serve
+// anything.
+//
+// This is the candidate set the selection chooser works from; it is one of the
+// methods implementing selection.Upstream.
+func (m *Manager) Serving() []string {
+	var out []string
+	for name, p := range m.proxy {
+		if state := p.state.Load(); state == stateProxy || state == stateCacheOnly {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ElectedUpstream returns the upstream URL currently elected for a namespace,
+// and whether the namespace has one at all.
+//
+// A namespace serving cached content only has none, and neither has one that
+// was never elected: the caller cannot probe those. The URL is returned even
+// while the selector holds it as unhealthy, because a content probe is exactly
+// what establishes whether it works — the selector keeps the previous election
+// when every endpoint is failing, and that endpoint may still be the one that
+// serves this repository.
+func (m *Manager) ElectedUpstream(namespace string) (string, bool) {
+	p, ok := m.proxy[namespace]
+	if !ok || p.selector == nil || p.state.Load() != stateProxy {
+		return "", false
+	}
+	url, _ := p.selector.ElectedForRequest()
+	if url == "" {
+		return "", false
+	}
+	return url, true
+}
+
+// UpstreamCredentials returns the upstream user and password configured for a
+// namespace. Both are empty when the upstream is public, and when the namespace
+// is not a configured proxy namespace.
+func (m *Manager) UpstreamCredentials(namespace string) (user, pass string) {
+	ns, ok := m.cfg.Namespaces.Proxy[namespace]
+	if !ok {
+		return "", ""
+	}
+	return ns.Username, ns.Password
+}
+
+// CachedManifest reports whether a namespace already holds this repository and
+// reference on local disk, whoever can or cannot reach an upstream.
+//
+// It answers for local and proxy namespaces alike, and it is the selection
+// chooser's cheapest evidence: one stat, no network, and it is true exactly
+// when the namespace's engine can answer the pull without the upstream. That is
+// what lets a namespace keep serving already-cached images while its upstream
+// is down — including one that is serving cached content only.
+//
+// repo is the repository as that namespace's storage sees it, which is the
+// selection candidate's EnginePath, not necessarily the name the client wrote.
+func (m *Manager) CachedManifest(namespace, repo, ref string) bool {
+	if repo == "" || ref == "" {
+		return false
+	}
+	if _, ok := m.proxy[namespace]; !ok {
+		if _, ok := m.local[namespace]; !ok {
+			return false
+		}
+	}
+
+	root := m.cfg.NamespaceRoot(namespace)
+
+	// A reference is either a digest, which names an immutable revision, or a
+	// tag, which the driver records as a link to one. This is the same
+	// distinction the cache-hit classification in internal/server makes.
+	if dgst, err := digest.Parse(ref); err == nil && dgst.Validate() == nil {
+		return storage.HasRevision(root, repo, dgst)
+	}
+	return storage.HasTag(root, repo, ref)
+}
+
+// CachedBlob reports whether a namespace already holds this blob on local
+// disk.
+//
+// It is the digest-only counterpart of CachedManifest: blob data is
+// content-addressed and stored once per namespace, so this needs no repository
+// name — which is what lets the selection chooser route a request that carries
+// only a digest to a namespace that can answer it without an upstream.
+func (m *Manager) CachedBlob(namespace string, dgst digest.Digest) bool {
+	if err := dgst.Validate(); err != nil {
+		return false
+	}
+	if _, ok := m.proxy[namespace]; !ok {
+		if _, ok := m.local[namespace]; !ok {
+			return false
+		}
+	}
+	return storage.HasBlob(m.cfg.NamespaceRoot(namespace), dgst)
+}
+
+// UpstreamLatency returns how long the namespace's recent successful health
+// probes have taken, or false when no probe has succeeded yet.
+//
+// The selection chooser uses it as a tie-break weight between candidates whose
+// content probes measured the same duration. It is optional: the chooser works
+// without it.
+func (m *Manager) UpstreamLatency(namespace string) (time.Duration, bool) {
+	p, ok := m.proxy[namespace]
+	if !ok || p.selector == nil {
+		return 0, false
+	}
+	d := p.selector.LatencyEWMA()
+	if d <= 0 {
+		return 0, false
+	}
+	return d, true
 }
 
 // Namespaces returns the configured namespaces and their modes.
@@ -292,7 +495,7 @@ const (
 	stateProxy
 )
 
-// proxyNamespace tracks one proxy namespace's engine and upstream election.
+// proxyNamespace tracks one proxy namespace's engines and upstream election.
 type proxyNamespace struct {
 	name     string
 	spec     registryapp.Spec
@@ -300,19 +503,115 @@ type proxyNamespace struct {
 	rec      Recorder
 	log      *slog.Logger
 
-	// buildMu serialises rebuilds so two elections cannot build concurrently.
+	// buildMu serialises engine builds. Engines are never swapped out for one
+	// another: each (namespace, upstream) keeps its own, so a namespace can
+	// serve from any of its mirrors without rebuilding on every decision.
 	buildMu sync.Mutex
-	app     atomic.Pointer[registryapp.App]
+	// set is the immutable *appSet currently installed. It is replaced wholesale
+	// (copy-on-write) under buildMu, so the request path reads it without a lock.
+	set     atomic.Pointer[appSet]
 	state   atomic.Int32
 	lastErr atomic.Pointer[nsError]
 	started atomic.Bool
 }
 
+// appSet is the set of engines a namespace currently has: one per upstream it
+// has been asked to use, the sticky one an election chose, and the read-only
+// engine over the cache that keeps a degraded namespace serving.
+type appSet struct {
+	engines   map[string]*registryapp.App
+	sticky    string
+	cacheOnly *registryapp.App
+}
+
 type nsError struct{ err error }
 
-func (p *proxyNamespace) current() *registryapp.App { return p.app.Load() }
+// fallback returns the engine to use when no upstream was chosen: the sticky
+// one, or the cache-only engine. It reports false only when the namespace has
+// no engine at all.
+func (p *proxyNamespace) fallback() (*registryapp.App, bool) {
+	set := p.set.Load()
+	if set == nil {
+		return nil, false
+	}
+	if set.sticky != "" {
+		if app, ok := set.engines[set.sticky]; ok {
+			return app, true
+		}
+	}
+	if set.cacheOnly != nil {
+		return set.cacheOnly, true
+	}
+	// No election and no cache-only engine: any engine at all is better than a
+	// 503, and they all serve the same storage root.
+	for _, app := range set.engines {
+		return app, true
+	}
+	return nil, false
+}
 
-// run watches the election and rebuilds the engine when it changes.
+// current returns the namespace's sticky engine, or nil. It is the engine a
+// caller that names no upstream gets.
+func (p *proxyNamespace) current() *registryapp.App {
+	if set := p.set.Load(); set != nil {
+		if set.sticky != "" {
+			if app, ok := set.engines[set.sticky]; ok {
+				return app
+			}
+		}
+		if set.cacheOnly != nil {
+			return set.cacheOnly
+		}
+	}
+	return nil
+}
+
+// engineFor returns the engine bound to one upstream, building it on first use.
+func (p *proxyNamespace) engineFor(url string) (*registryapp.App, error) {
+	if url == "" {
+		if app, ok := p.fallback(); ok {
+			return app, nil
+		}
+		return nil, fmt.Errorf("namespace %s: no engine installed", p.name)
+	}
+
+	p.buildMu.Lock()
+	defer p.buildMu.Unlock()
+
+	cur := p.set.Load()
+	if cur == nil {
+		cur = &appSet{engines: map[string]*registryapp.App{}}
+	}
+	if app, ok := cur.engines[url]; ok {
+		return app, nil
+	}
+
+	spec := p.spec
+	spec.RemoteURL = url
+	app, err := registryapp.Build(spec)
+	if err != nil {
+		p.lastErr.Store(&nsError{err: err})
+		return nil, err
+	}
+
+	engines := make(map[string]*registryapp.App, len(cur.engines)+1)
+	for k, v := range cur.engines {
+		engines[k] = v
+	}
+	engines[url] = app
+
+	p.set.Store(&appSet{engines: engines, sticky: cur.sticky, cacheOnly: cur.cacheOnly})
+	p.state.Store(stateProxy)
+	p.lastErr.Store(nil)
+	p.log.Info("namespace engine ready", "namespace", p.name, "upstream", url)
+	if p.rec != nil {
+		p.rec.NamespaceReady(p.name)
+	}
+	return app, nil
+}
+
+// run watches the election and keeps the namespace's sticky engine in step with
+// it.
 func (p *proxyNamespace) run(ctx context.Context) {
 	if p.started.CompareAndSwap(false, true) {
 		p.selector.OnElect(func(url string) {
@@ -334,26 +633,31 @@ func (p *proxyNamespace) run(ctx context.Context) {
 	p.selector.Run(ctx)
 }
 
-// install builds the pull-through engine against url and swaps it in, shutting
-// the previous engine down afterwards.
+// install builds the engine for url and makes it the namespace's sticky one.
 func (p *proxyNamespace) install(url string) error {
+	if _, err := p.engineFor(url); err != nil {
+		return err
+	}
+	return p.setSticky(url)
+}
+
+// setSticky records which engine a caller that names no upstream gets.
+func (p *proxyNamespace) setSticky(url string) error {
 	p.buildMu.Lock()
 	defer p.buildMu.Unlock()
 
-	spec := p.spec
-	spec.RemoteURL = url
-
-	app, err := registryapp.Build(spec)
-	if err != nil {
-		p.lastErr.Store(&nsError{err: err})
-		return err
+	cur := p.set.Load()
+	if cur == nil {
+		return fmt.Errorf("namespace %s: no engine installed for %s", p.name, url)
 	}
-
-	p.swap(app, stateProxy)
+	if _, ok := cur.engines[url]; !ok {
+		return fmt.Errorf("namespace %s: no engine installed for %s", p.name, url)
+	}
+	p.set.Store(&appSet{engines: cur.engines, sticky: url, cacheOnly: cur.cacheOnly})
 	return nil
 }
 
-// installCacheOnly swaps in a read-only engine over this namespace's cache, so
+// installCacheOnly installs a read-only engine over this namespace's cache, so
 // already-cached images stay pullable while the upstream is unreachable.
 //
 // It uses the same storage root. That is safe because cache expiry is disabled
@@ -375,28 +679,18 @@ func (p *proxyNamespace) installCacheOnly() error {
 		return err
 	}
 
-	p.swap(app, stateCacheOnly)
-	return nil
-}
-
-// swap installs a new engine and retires the previous one. Callers must hold
-// buildMu.
-func (p *proxyNamespace) swap(app *registryapp.App, state int32) {
-	old := p.app.Swap(app)
-	p.state.Store(state)
+	cur := p.set.Load()
+	if cur == nil {
+		cur = &appSet{engines: map[string]*registryapp.App{}}
+	}
+	p.set.Store(&appSet{engines: cur.engines, sticky: cur.sticky, cacheOnly: app})
+	p.state.Store(stateCacheOnly)
 	p.lastErr.Store(nil)
 
 	if p.rec != nil {
 		p.rec.NamespaceReady(p.name)
 	}
-
-	if old != nil {
-		// Shut the previous engine down after the swap so in-flight requests on
-		// it finish before its workers stop.
-		if err := old.Shutdown(); err != nil {
-			p.log.Warn("previous engine shutdown failed", "namespace", p.name, "error", err)
-		}
-	}
+	return nil
 }
 
 // degraded reports whether the namespace is not a working pull-through cache.
@@ -406,10 +700,23 @@ func (p *proxyNamespace) degraded() bool {
 
 func (p *proxyNamespace) shutdown() error {
 	p.state.Store(stateUnavailable)
-	if app := p.app.Swap(nil); app != nil {
-		return app.Shutdown()
+	set := p.set.Swap(nil)
+	if set == nil {
+		return nil
 	}
-	return nil
+
+	var errs []error
+	for upstreamURL, app := range set.engines {
+		if err := app.Shutdown(); err != nil {
+			errs = append(errs, fmt.Errorf("namespace %s upstream %s: %w", p.name, upstreamURL, err))
+		}
+	}
+	if set.cacheOnly != nil {
+		if err := set.cacheOnly.Shutdown(); err != nil {
+			errs = append(errs, fmt.Errorf("namespace %s cache engine: %w", p.name, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Err reports the most recent failure for a namespace.

@@ -1,0 +1,9 @@
+{
+  "id": "r_binding_serves",
+  "label": "监听端点承载服务",
+  "kind": "defines",
+  "domain": "ns_port_binding",
+  "range": "service",
+  "gloss": "某个监听端点由哪个服务进程提供。",
+  "basis": "本次改动：删除按 namespace 绑定的监听器后，只有主端点 5000 承载 rms"
+}

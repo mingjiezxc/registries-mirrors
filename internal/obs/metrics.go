@@ -31,6 +31,11 @@ type Metrics struct {
 	namespaceUp     *prometheus.GaugeVec
 	namespaceErrors *prometheus.CounterVec
 
+	upstreamProbes     *prometheus.HistogramVec
+	upstreamServed     *prometheus.CounterVec
+	upstreamMismatches *prometheus.CounterVec
+	selectionDecisions *prometheus.CounterVec
+
 	handler http.Handler
 }
 
@@ -44,6 +49,11 @@ const (
 	metricElections       = "rms_upstream_election_changes_total"
 	metricNamespaceUp     = "rms_namespace_up"
 	metricNamespaceErrors = "rms_namespace_errors_total"
+
+	metricUpstreamProbes    = "rms_upstream_probe_duration_seconds"
+	metricUpstreamServed    = "rms_upstream_wins_total"
+	metricUpstreamMismatch  = "rms_upstream_digest_mismatch_total"
+	metricSelectionDecision = "rms_selection_decisions_total"
 )
 
 // NewMetrics builds the metric set and the handler serving it.
@@ -98,9 +108,33 @@ func NewMetrics(metricsPath string) (*Metrics, error) {
 		Help: "Namespace lifecycle failures, such as an unreachable upstream.",
 	}, []string{"namespace"})
 
+	m.upstreamProbes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: metricUpstreamProbes,
+		Help: "How long an upstream took to answer a content probe, by namespace and upstream. Only probes launched by the selection race are measured; a probe that missed the decision deadline is recorded at the moment the decision gave up on it.",
+		// The interesting range is a fast mirror (single-digit ms) to a
+		// hanging one (the probe timeout, tens of seconds).
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60},
+	}, []string{"namespace", "upstream"})
+
+	m.upstreamServed = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: metricUpstreamServed,
+		Help: "Requests handed to an upstream, by namespace and upstream. Under load balancing this is the distribution itself; a namespace with one upstream shows that upstream's share of its traffic.",
+	}, []string{"namespace", "upstream"})
+
+	m.upstreamMismatches = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: metricUpstreamMismatch,
+		Help: "Content probes whose digest disagreed with the namespace's authority upstream, so the answer was not served. A non-zero rate means a mirror of that registry is stale or has been replaced.",
+	}, []string{"namespace", "upstream"})
+
+	m.selectionDecisions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: metricSelectionDecision,
+		Help: "Selection decisions by where the answer came from: probe, decision-cache, cache (a namespace already held it on disk) or affinity (a digest-only request following the last manifest decision).",
+	}, []string{"source"})
+
 	reg.MustRegister(
 		m.requests, m.requestDuration, m.cacheHits, m.cacheMisses,
 		m.elections, m.namespaceUp, m.namespaceErrors,
+		m.upstreamProbes, m.upstreamServed, m.upstreamMismatches, m.selectionDecisions,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -165,6 +199,29 @@ func (m *Metrics) NamespaceDegraded(ns string, err error) {
 
 // NamespaceReady implements registry.Recorder.
 func (m *Metrics) NamespaceReady(ns string) { m.namespaceUp.WithLabelValues(ns).Set(1) }
+
+// UpstreamProbed implements selection.Observer.
+func (m *Metrics) UpstreamProbed(ns, upstream string, _ bool, latency time.Duration) {
+	m.upstreamProbes.WithLabelValues(ns, upstream).Observe(latency.Seconds())
+}
+
+// UpstreamServed implements selection.Observer.
+func (m *Metrics) UpstreamServed(ns, upstream string) {
+	m.upstreamServed.WithLabelValues(ns, upstream).Inc()
+}
+
+// UpstreamDigestMismatch implements selection.Observer.
+func (m *Metrics) UpstreamDigestMismatch(ns, upstream string) {
+	m.upstreamMismatches.WithLabelValues(ns, upstream).Inc()
+}
+
+// DecisionSource implements selection.Observer.
+func (m *Metrics) DecisionSource(source string) {
+	if source == "" {
+		source = "none"
+	}
+	m.selectionDecisions.WithLabelValues(source).Inc()
+}
 
 // SetBuildInfo publishes the running version as a labelled info gauge.
 func (m *Metrics) SetBuildInfo(version, commit string) {

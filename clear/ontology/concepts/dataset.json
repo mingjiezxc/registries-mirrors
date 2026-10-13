@@ -1,0 +1,6 @@
+{
+  "gloss": "落在磁盘上、按目录边界计量与迁移的数据集合(如某个 namespace 的镜像缓存)。",
+  "id": "dataset",
+  "kind": "category",
+  "label": "数据集"
+}

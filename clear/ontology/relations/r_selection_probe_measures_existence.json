@@ -1,0 +1,7 @@
+{
+  "domain": "selection_probe",
+  "id": "r_selection_probe_measures_existence",
+  "kind": "measures",
+  "label": "选择探测判定仓库存在",
+  "range": "unqualified_request"
+}

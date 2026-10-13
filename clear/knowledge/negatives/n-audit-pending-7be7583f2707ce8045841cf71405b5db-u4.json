@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-7be7583f2707ce8045841cf71405b5db-u4",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "internal/selection/probe.go:286-289 把 manifest 路径上除 401/405/501 外的任何状态（含 5xx）判为「明确不存在」absent，而 reports/103-selection-rollout.md:87 与 probe.go:240 的口径是「只有传输层失败才算不可达」；无单测覆盖 manifest 的 5xx，做的人未登记这处边界。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者指出的不一致是真的，已修：manifest 路径上现在与 token 端点共用同一套三分类 —— 2xx=存在；401/403/404/400/410 等拒绝类=明确不存在；**5xx、429、传输失败、超时、无当选上游=没能给出答复（不可达）**。实现是新增 `case status >= 500 || status == 429 → res.failed`，置于 405 特例之后；循环兜底也从 absent 改成 failed。新增成对用例 `TestServerErrorsAreNotAbsence`（500/502/429/GET 降级后 500 均判 503）与 `TestAFailingCandidateStillLosesToAnAnswer`（一个 500 + 另一个明确 404 → 仍 404，理由写进用例注释）。`reports/raw/selection-notes.md` 里那句笼统表述也已改成三分类表；这份新镜像已上线到 103（`db6d0948763a`）。",
+    "by": "selection_probe"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:7be7583f2707ce8045841cf71405b5db#u4",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791856437215,
+  "updated": 1791862477397
+}

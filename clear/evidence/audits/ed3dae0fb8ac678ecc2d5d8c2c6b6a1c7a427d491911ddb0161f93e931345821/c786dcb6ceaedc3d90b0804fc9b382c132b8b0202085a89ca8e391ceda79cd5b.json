@@ -1,0 +1,205 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "6d4968f7-cf1a-4d44-adfb-bd5fd25c56d4",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "refute",
+      "basis": "clear/knowledge/negatives/x-h-nccqnt.json:20 的 scope 记端口 5000/15000-15006，与现行单端点部署不符，账本判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:17），范围不适用。"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "refute",
+      "basis": "同前：scope.conditions 仍写 5000/15000-15006 与六条旧上游列表，系统判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:27），报告 reports/selection-verification.md:67 的引用未经适用性判定。"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "refute",
+      "basis": "该条 scope 同样记录旧端口拓扑并被判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:17），只能作背景一致性，不能算直接采用。"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "refute",
+      "basis": "h-0afup5 的 uses 判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:22），条目的 scope 条件不覆盖当前部署形态。"
+    },
+    {
+      "id": "n-u-fl1myg",
+      "verdict": "refute",
+      "basis": "docker.io 上游排序依据该条，但它的 scope 仍写 15000–15006 与旧上游列表，账本判 out_of_scope（clear/goals/g-mv5eqq0n96w2.md:17），适用性未获承认。"
+    },
+    {
+      "id": "n-u-l29jwy",
+      "verdict": "refute",
+      "basis": "同上，被 reports/103-selection-rollout.md:131 用作 daocloud 末位依据，但 scope 与现行拓扑不符且判 out_of_scope，依据在产物侧只剩文字说明。"
+    }
+  ],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "交付态抓取 reports/raw/103-final-live-10ns.txt:26 里 ghcr.io=885.498ms(unreachable:upstream-status) 而同一次 gcr.io=662.589ms(absent:auth-refused)，但 deploy/103/rms.yaml:104 已把官方 https://ghcr.io 排在首位；reports/103-selection-rollout.md:108 仍称「它们现在的当选上游是 daocloud 镜像」，同文件 :133 又说改序后二者都显示 absent:auth-refused——三处不能同时成立，排除理由只有一段未落盘的现场复测。",
+      "matters": "no"
+    },
+    {
+      "what": "我本次只读复跑同一路径（curl 103:5000/v2/library/nope-final-check/manifests/latest）得 404 用时 2.679s，低于报告与 raw 所记交付态三次 5.466/4.826/10.002s（reports/raw/103-final-live-10ns.txt:20-22、reports/103-selection-rollout.md:160）；报告把它们当作交付态实测区间而未注明单次可低到 ~2.7s。",
+      "matters": "no"
+    },
+    {
+      "what": "Dockerfile.binary:22 仍是 `EXPOSE 5000 5001 5002 9100`，而 Dockerfile:51-54 已改成 `EXPOSE 5000 9100` 并注明该特性删除；判据③只涵盖 15000–15006，故不影响成立，但目标主张「移除按 namespace 绑定的独立端口」在仓库内两处镜像元数据仍不一致，且此前只登记过 Dockerfile 那一处。",
+      "matters": "no"
+    },
+    {
+      "what": "四条判断登记的 uses（x-h-nccqnt、n-u-s01do2、n-u-iiyp8u、n-u-l136s0、n-u-fl1myg、n-u-l29jwy）在 clear/goals/g-mv5eqq0n96w2.md:17-32 全判 out_of_scope（clear/knowledge/negatives/x-h-nccqnt.json:20 的 scope 仍写端口 5000/15000-15006），而 reports/selection-verification.md:65-67 仍把它们当作本次改动的依据，所称两份 Hindsight 更正正文在工作区不可见，适用性判定实际被绕过。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "代码与用例实证该口径：probe.go:341-348/404-422 把认证走完的 401/403/404 判 absent、5xx/429/传输失败判 not-an-answer，TestServerErrorsAreNotAbsence、TestTransportFailuresAreNotAbsence 通过，103 现场返回 404 而非 503。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "probe.go:505-536 按最终响应媒体类型判定并容忍缺失；TestARedirectToAWebPageIsNotAManifest、TestHTMLWith200IsNotAManifest 通过，dhi.io 的 302→HTML 落页在交付态抓取中记为 absent:not-manifest-content:text/html。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "DecideBlobInRepo 走 /v2/<repo>/blobs/<digest>（probe.go:143-169），TestDecideBlobInRepoAsksTheBlobPath 断言上游实际收到的路径，103 现场带仓库名 blob 由 404 修为 200。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "pick 只在无任何候选给出答复时回 ErrUnreachable（probe.go:714-731），TestAFailingCandidateStillLosesToAnAnswer 与 TestDecideMistypedImageSurvivesOneNamespaceDown 通过，103 拼错镜像名复得 404 NAME_UNKNOWN。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "deploy/103/rms.yaml:99-104 与 reports/103-selection-rollout.md:129-133 显示：镜像优先的顺序被 103 决策行（unreachable:upstream-status）当场否证后改为官方优先，正是「先用真实内容量再定顺序」的依据。"
+    }
+  ],
+  "basis": "判据①–⑥逐条核对均成立：internal/selection 的并发探测、只认 2xx、取最快、probe_ttl 决策缓存与仓库亲和、token 重试、NotFound/Unreachable 两种语义在代码与用例中齐备（probe.go:227-246、365-422、714-731）；config 删除 namespaces.default 与 listeners/anonymous_root（KnownFields 严格解码，config.go:290）并新增 namespaces.selection，接线到 app/cmd（app.go:97-100、main.go:384），dispatcher 全 404→NAME_UNKNOWN、全不可达→UNAVAILABLE（dispatch.go:424-431）、GET/HEAD 仅重选一次（dispatch.go:495-543，含 TestReselectHappensAtMostOnce）；仓库内 15000–15006 只剩 deploy/103/README.md 的迁移说明，部署文件只剩 5000/9100；e2e 三情形齐备（e2e_test.go:745、822）。我在副本复跑 make check EXIT=0、race 无竞争、e2e 11 个顶层 RUN（10 PASS+1 SKIP）/29 RUN 行全绿，与 raw 口径一致；103 现场我自己只读复得 404 NAME_UNKNOWN 与 503 UNAVAILABLE 包络逐字一致、10 条 rms_namespace_up=1、只发布 5000/9100、运行镜像 sha256:5a2c0ca73118 与抓取完全相同。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "internal/selection/probe.go",
+      "line": 227
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 365
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 383
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 714
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 169
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 290
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 1
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "line": 88
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "cmd/rms/main.go",
+      "line": 384
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 247
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 495
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 829
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 79
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 95
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 45
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 160
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 29
+    },
+    {
+      "path": "reports/raw/101-and-103-published-ports.txt",
+      "line": 1
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 104
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    }
+  ],
+  "card": "判据①–⑥逐条核对均成立：internal/selection 的并发探测、只认 2xx、取最快、probe_ttl 决策缓存与仓库亲和、token 重试、NotFound/Unreachable 两种语义在代码与用例中齐备（probe.go:227-246、365-422、714-731）；config 删除 namespaces.default 与 listeners/anonymous_root（KnownFields 严格解码，config.go:290）并新增 namespaces.selection，接线到 app/cmd（app.go:97-100、main.go:384），dispatcher 全 404→NAME_UNKNOWN、全不可达→UNAVAILABLE（dispatch.go:424-431）、GET/HEAD 仅重选一次（dispatch.go:495-543，含 TestReselectHappensAtMostOnce）；仓库内 15000–15006 只剩 deploy/103/README.md 的迁移说明，部署文件只剩 5000/9100；e2e 三情形齐备（e2e_test.go:745、822）。我在副本复跑 make check EXIT=0、race 无竞争、e2e 11 个顶层 RUN（10 PASS+1 SKIP）/29 RUN 行全绿，与 raw 口径一致；103 现场我自己只读复得 404 NAME_UNKNOWN 与 503 UNAVAILABLE 包络逐字一致、10 条 rms_namespace_up=1、只发布 5000/9100、运行镜像 sha256:5a2c0ca73118 与抓取完全相同。",
+  "created_at": 1791865476589,
+  "evaluator": "independent"
+}

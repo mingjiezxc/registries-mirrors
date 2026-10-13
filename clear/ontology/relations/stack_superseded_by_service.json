@@ -1,0 +1,7 @@
+{
+  "domain": "service_stack",
+  "id": "stack_superseded_by_service",
+  "kind": "affects",
+  "label": "旧服务栈被新服务取代",
+  "range": "service"
+}

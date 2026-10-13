@@ -1,0 +1,45 @@
+# 103 交付态（10 namespace，官方优先，镜像 5a2c0ca73118）现场冻结抓取（2026-10-13T12:05:53+08:00）
+## 0. 镜像/端口/namespace 数
+  image=sha256:5a2c0ca731180e543d1e82019d22d0e6e165d6e4b7931add58c5c8ff8e0ceba6
+ports=0.0.0.0:5000->5000/tcp, :::5000->5000/tcp, 0.0.0.0:9100->9100/tcp, :::9100->9100/tcp
+  proxy namespace 数: 10
+
+## 1. rms_namespace_up
+  rms_namespace_up{namespace="dhi.io"} 1
+  rms_namespace_up{namespace="docker.elastic.co"} 1
+  rms_namespace_up{namespace="docker.io"} 1
+  rms_namespace_up{namespace="gcr.io"} 1
+  rms_namespace_up{namespace="ghcr.io"} 1
+  rms_namespace_up{namespace="k8s.gcr.io"} 1
+  rms_namespace_up{namespace="mcr.microsoft.com"} 1
+  rms_namespace_up{namespace="nvcr.io"} 1
+  rms_namespace_up{namespace="quay.io"} 1
+  rms_namespace_up{namespace="registry.k8s.io"} 1
+
+## 2. 未命中缓存的无限定请求（不存在仓库）
+  rep1 http=404 t=5.466464s
+  rep2 http=404 t=4.825984s
+  rep3 http=404 t=10.002103s
+  响应体：
+    {"errors":[{"code":"NAME_UNKNOWN","message":"repository library/nope-final-check:latest is not available in any configured namespace","detail":null}]}
+  决策日志：
+    {"time":"2026-10-13T04:05:58.962244747Z","level":"INFO","msg":"selection","repo":"library/nope-final-check","ref":"latest","kind":"manifest","winner":"","candidates":10,"source":"probe","cached":false,"timings":["dhi.io=1.102377s(absent:not-manifest-content:text/html)","docker.elastic.co=2.320632s(absent)","docker.io=5.462858s(absent)","gcr.io=662.589ms(absent:auth-refused)","ghcr.io=885.498ms(unreachable:upstream-status)","k8s.gcr.io=2.672565s(absent)","mcr.microsoft.com=1.523325s(absent)","nvcr.io=1.82282s(absent)","quay.io=2.946231s(absent)","registry.k8s.io=2.672592s(absent)"]}
+
+## 3. 503 包络
+  {"errors":[{"code":"UNAVAILABLE","message":"cannot determine which namespace serves /v2/blobs/uploads/abc-123: the path names neither a repository nor a blob digest","detail":null}]}
+
+## 4. 已缓存镜像
+  http=200 t=2.106448s bytes=9218
+
+## 5. 无仓库名 blob
+  http=200 t=0.004102s bytes=581
+
+## 6. 旧端口/就绪
+  :15000 http=000
+connection refused
+  :15003 http=000
+connection refused
+  :15006 http=000
+connection refused
+  :5000/v2/ http=401
+  readyz=ready

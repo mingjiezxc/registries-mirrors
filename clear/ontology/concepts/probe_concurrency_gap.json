@@ -1,0 +1,7 @@
+{
+  "gloss": "同一轮里最晚发出与最早发出的探测之间的时间差；串行实现下它会不小于前一个候选的响应延迟。",
+  "id": "probe_concurrency_gap",
+  "kind": "measure",
+  "label": "探测并发压缩比",
+  "unit": "ms"
+}

@@ -1,0 +1,8 @@
+{
+  "check": "docker pull 经该服务的 registry-mirrors 端点,并在服务侧日志/指标留痕",
+  "domain": "service",
+  "id": "service_reachable_via_mirror",
+  "kind": "affects",
+  "label": "服务经 registry-mirrors 被客户端到达",
+  "range": "registry_mirrors"
+}

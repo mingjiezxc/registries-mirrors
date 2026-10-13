@@ -1,0 +1,34 @@
+{
+  "id": "n-u-mgi4ns",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "预测构建一次通过;实际第一次构建在 RUN 阶段报 “failed to create endpoint ... on network bridge: adding interface veth to bridge docker0 failed: Device does not exist” —— 我在 103 上起的隔离探针 dockerd(已停)把宿主默认网桥 docker0 删了。影响面已逐个容器核过:38 个运行中容器全在自定义网桥(share / *_default)上,未受影响;受损的是默认网桥上的新建容器与构建。修法:停掉探针 dockerd,按 docker network inspect bridge 的定义手工重建 docker0(10.0.0.1/24、fd00::1/80、mtu 1500)并恢复 sysctl,用新容器验证(得 10.0.0.2、网关可 ping、",
+  "touches": [
+    "svc_rms_103"
+  ],
+  "evidence": [],
+  "about": [
+    "host_103",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-mgi4ns",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791813435097,
+  "updated": 1791813435097
+}

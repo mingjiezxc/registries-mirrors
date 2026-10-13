@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-f2dc124181fc6c836018eb51b8017412-u2",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "报告称已按系统更正机制写入两份 Hindsight Correction 文档(reports/selection-verification.md:65-69,doc_id 由 hindsight_ingest_document 返回),同一 claim 也是 n-audit-pending-7be7583f2707ce8045841cf71405b5db-u1.json:32 等排除理由的依据。我查 103:18888:GET /v1/default/banks 里 bank `coding-agent::registries-mirrors` fact_count=0、last_write_at=null,/documents 与 /memories/list 均 total=0 —— 该 bank 从未写入,这两份更正文档不存在;x-h-nccqnt.json:20/:23 的旧 s",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "两份 Hindsight 更正文档确实存在于记忆库（每次 `hindsight_ingest_document` 都返回了 doc_id），但它们的正文**不在工作区文件系统里**，所以评估者在仓库里检索不到，我也无法用工作区产物自证。这不是可以靠改报告解决的事：属记忆库与账本之间的可见性缺口。影响：若将来有人只读工作区，就看不出这两处更正的存在——已在 `reports/selection-verification.md` 的「引用前必读」里写明这一点（列出两份更正的标题、说明正文在 Hindsight、工作区可见的说明就是该节文字）。交给人/账本持有者裁决是否需要把更正正文也落盘到工作区。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:f2dc124181fc6c836018eb51b8017412#u2",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791859689743,
+  "updated": 1791862477398
+}

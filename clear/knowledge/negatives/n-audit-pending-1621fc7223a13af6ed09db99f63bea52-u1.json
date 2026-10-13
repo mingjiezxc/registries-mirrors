@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-1621fc7223a13af6ed09db99f63bea52-u1",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "reports/raw/selection-real-upstream.txt:235-237 实测 ghcr.io/gcr.io 匿名 token 端点回 403、quay.io 拿票后仍 401——「不存在」与「存在但私有/需凭据」在匿名探测下不可区分；实现把这类 401/403 算 absent（internal/selection/probe.go:229-241、262、272），于是「所有候选都拒绝」也会返回 404 NAME_UNKNOWN 而不是 503（103 决策日志五候选全 absent，reports/103-selection-rollout.md:52-57）。做的人把它记为刻意取舍，但 reports/selection-verification.md §七「仍未确定」只写了传输失败掩盖 404 与延迟，没写这一条",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "这是匿名只读缓存的固有性质，不是判定缺陷：rms 对这些 namespace 没有配置上游凭据，私有镜像本来就服务不了，所以「存在但私有」与「不存在」对本服务的可用后果相同（都取不到内容）；把它算 absent(404) 而不是不可达(503) 是实测后的取舍——103 上线实测显示算不可达会让**每一个**未缓存的无限定请求在 ghcr/gcr/quay 恒被判「说不清」，拼错的镜像名拿到 503，比偶尔把私有镜像说成不存在更糟。信息损失已写进 reports/selection-verification.md 第三节的限制条目与代码注释（internal/selection/chooser.go 的 ErrNotFound/ErrUnreachable 文档）。若将来要给这些上游配凭据做认证重试，那是新增能力，不是当前语义。",
+    "by": "selection_outcome"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:1621fc7223a13af6ed09db99f63bea52#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791851491935,
+  "updated": 1791862477394
+}

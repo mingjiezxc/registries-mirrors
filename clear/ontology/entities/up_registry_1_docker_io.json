@@ -1,0 +1,10 @@
+{
+  "basis": "实测 401、5.8s",
+  "id": "up_registry_1_docker_io",
+  "label": "https://registry-1.docker.io",
+  "provenance": {
+    "kind": "named",
+    "ref": "curl https://registry-1.docker.io/v2/"
+  },
+  "type": "upstream"
+}

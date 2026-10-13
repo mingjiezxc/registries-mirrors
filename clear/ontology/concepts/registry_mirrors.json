@@ -1,0 +1,6 @@
+{
+  "gloss": "dockerd 的镜像加速列表,按顺序尝试,只对 Docker Hub 生效;条目里不能带路径,且其请求不带任何凭据。",
+  "id": "registry_mirrors",
+  "kind": "category",
+  "label": "docker daemon.json 的 registry-mirrors"
+}

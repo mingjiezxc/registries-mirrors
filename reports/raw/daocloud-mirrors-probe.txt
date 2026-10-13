@@ -1,0 +1,18 @@
+# 103 到 daocloud 镜像源的连通实测（2026-10-13T10:57:47+08:00，走局域网代理）
+elastic.m.daocloud.io      v2=401 t=0.202491s
+docker.m.daocloud.io       v2=401 t=0.171784s
+dhi.m.daocloud.io          v2=401 t=0.200094s
+gcr.m.daocloud.io          v2=401 t=0.183814s
+ghcr.m.daocloud.io         v2=401 t=0.185026s
+k8s.m.daocloud.io          v2=401 t=0.185171s
+mcr.m.daocloud.io          v2=401 t=0.188411s
+nvcr.m.daocloud.io         v2=401 t=0.207367s
+quay.m.daocloud.io         v2=401 t=0.189616s
+
+## 一个真实仓库的 manifest 探测（ghcr 上的 astral-sh/uv）
+ghcr.m.daocloud.io     manifests=401 t=0.187441s
+ghcr.io                manifests=401 t=4.438759s
+
+## 一个真实 layer 的下载（看是否 302 到 R2 / 是否慢）
+docker.m.daocloud.io     blob=401 t=0.182027s size=73 redirect=
+docker.1ms.run           blob=401 t=0.324134s size=156 redirect=

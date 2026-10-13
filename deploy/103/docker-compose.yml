@@ -1,0 +1,64 @@
+# rms on 192.168.188.103 — 接管原 /opt/stacks/registry 的 registry:2 镜像栈
+#
+# 只剩两个端口:
+#
+#   5000   主端点。多 namespace:显式写在路径里(docker.io/library/alpine)就直连
+#          那个 namespace;不写 namespace(library/alpine)则由 rms 并发探测所有
+#          proxy namespace,挑真有该镜像、响应最快的那个。
+#   9100   指标(仅内网)。
+#
+# 旧的按上游绑定的端口(每个 upstream 一个口、配 anonymous_root)整体下线。
+# 影响与替代做法见 deploy/103/README.md 的迁移说明;客户端 daemon.json /
+# registries.yaml 里指向这些端口的地方都要改。
+#
+# 上游出网走局域网代理 192.168.188.1:3128(见 .env 与 rms.yaml 的说明):
+# .103 对公共仓库的 /v2/ 握手是直连可达的,但**层下载**直连很糟
+# (1ms 直连 12 KB/s 传不完、经代理 168 KB/s;官方 Hub 直连直接不可达)。
+# 旧的 registry:2 栈在 .103 上也是给 5 个镜像配了同一个代理。
+
+services:
+  rms:
+    build:
+      context: .
+      dockerfile: ${RMS_DOCKERFILE:-Dockerfile}
+      args:
+        VERSION: ${RMS_VERSION:-dev}
+        COMMIT: ${RMS_COMMIT:-none}
+    image: ${RMS_IMAGE:-rms:dev}
+    container_name: rms
+    restart: unless-stopped
+
+    ports:
+      - "${RMS_PORT_PRIMARY:-5000}:5000"
+      - "${RMS_PORT_METRICS:-9100}:9100"
+
+    volumes:
+      # 每个 namespace 一个缓存根:./data/<namespace>/docker/registry/v2/...
+      # 旧的 registry:2 缓存就是按 namespace mv 进来的。
+      - ${RMS_DATA_DIR:-./data}:/data
+      # 整目录挂载,不逐文件挂:htpasswd 是「写临时文件再 rename」原子替换的,
+      # 文件级 bind mount 会钉住旧 inode,容器永远读到老文件。
+      - ./config:/etc/rms:ro
+
+    environment:
+      RMS_STORAGE_ROOT: /data
+      RMS_HTPASSWD: /etc/rms/htpasswd
+      RMS_EXTERNAL_URL: ${RMS_EXTERNAL_URL:-}
+      RMS_HTTP_SECRET: ${RMS_HTTP_SECRET:-}
+      # 上游出网代理与例外表。rms.yaml 里的 proxy/no_proxy 读的就是这两个变量;
+      # 不在这里传,容器里就是空的(等于直连)——实测直连层下载很差。
+      RMS_UPSTREAM_PROXY: ${RMS_UPSTREAM_PROXY:-}
+      RMS_NO_PROXY: ${RMS_NO_PROXY:-}
+
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/rms", "healthcheck", "--addr", "http://127.0.0.1:5000/v2/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"

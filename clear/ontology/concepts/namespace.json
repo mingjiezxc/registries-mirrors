@@ -1,0 +1,6 @@
+{
+  "gloss": "rms 的缓存与代理单元:一个上游仓库对应一个 namespace,对应 <root>/<namespace> 一个目录。",
+  "id": "namespace",
+  "kind": "category",
+  "label": "namespace"
+}

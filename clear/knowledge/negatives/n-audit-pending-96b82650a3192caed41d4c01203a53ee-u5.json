@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-96b82650a3192caed41d4c01203a53ee-u5",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "四条判断的 uses 全为空，报告也未引用 clear/knowledge/negatives/x-h-nccqnt.json:5（preliminary_excluded）与 n-u-iiyp8u.json：它们记的正是「镜像站的 /v2/ 401 挑战让 dockerd 放弃该镜像站、回落官方 Hub」，而本次上线按 reports/103-selection-rollout.md:9 建议客户端把 registry-mirrors 指向 103:5000，同时 :41/reports/selection-verification.md:51 把该 401 挑战记为「未变」的正面读数——新单端点下 dockerd 是否仍走 rms 未经本步检验（不属四条判断范围）。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者指出报告未引用已有的相关知识条目，已补：reports/selection-verification.md 第三节新增「与已有条目的关系」小节，逐条写明 —— x-h-nccqnt（初步排除：镜像站的 /v2/ 401 挑战让 dockerd 放弃镜像源）是当初引入端口绑定与 anonymous_root 的原因，本次删端口后主端点 /v2/ 仍保持 401 挑战，因此该记录的机制未被改坏也未被推翻；n-u-iiyp8u（103 直连官方 Hub 间歇 connection reset）与本次 direct 组实测一致，是「不可达只留给传输失败」的现实依据；n-u-s01do2（上游故障转移只看 /v2/ 探活会漏掉「探活正常、取内容失败」）正是本次改用仓库级探测的针对对象。四条判断本身的 uses 字段是运行态账本里的字段，我无法从报告侧改写；报告里以文字引用补齐了适用性说明。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:96b82650a3192caed41d4c01203a53ee#u5",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791853541752,
+  "updated": 1791862477395
+}

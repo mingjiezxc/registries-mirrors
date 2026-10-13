@@ -1,0 +1,47 @@
+# race 与 e2e -v 原始输出（2026-10-13T10:33:35+08:00）
+$ go test -race -count=1 ./internal/selection/ ./internal/server/
+ok  	github.com/watsons/rms/internal/selection	1.783s
+ok  	github.com/watsons/rms/internal/server	6.306s
+
+$ go test -tags e2e -count=1 -v ./test/e2e/...
+=== RUN   TestReservePortsNeverRepeat
+--- PASS: TestReservePortsNeverRepeat (0.07s)
+=== RUN   TestLoginContract
+--- PASS: TestLoginContract (0.65s)
+=== RUN   TestPullThroughAndCache
+=== RUN   TestPullThroughAndCache/explicit_namespace
+=== RUN   TestPullThroughAndCache/unqualified_request_is_resolved_by_selection
+=== RUN   TestPullThroughAndCache/single_segment_becomes_a_library_image
+=== RUN   TestPullThroughAndCache/blob_is_served_and_then_cached
+--- PASS: TestPullThroughAndCache (0.52s)
+=== RUN   TestUnqualifiedPicksNamespaceWithContent
+=== RUN   TestUnqualifiedPicksNamespaceWithContent/only_one_namespace_has_it,_so_it_wins
+=== RUN   TestUnqualifiedPicksNamespaceWithContent/the_other_namespace_wins_for_its_own_repository
+=== RUN   TestUnqualifiedPicksNamespaceWithContent/explicit_namespace_prefix_still_goes_straight_there
+=== RUN   TestUnqualifiedPicksNamespaceWithContent/a_missing_tag_is_NAME_UNKNOWN,_not_UNAVAILABLE
+--- PASS: TestUnqualifiedPicksNamespaceWithContent (0.67s)
+=== RUN   TestUnqualifiedAllUnreachable
+--- PASS: TestUnqualifiedAllUnreachable (0.31s)
+=== RUN   TestUnqualifiedBlobFollowsTheManifest
+--- PASS: TestUnqualifiedBlobFollowsTheManifest (0.60s)
+=== RUN   TestUnqualifiedBlobWithUnknownDigestIsUnavailable
+--- PASS: TestUnqualifiedBlobWithUnknownDigestIsUnavailable (0.54s)
+=== RUN   TestPushFlow
+--- PASS: TestPushFlow (1.26s)
+=== RUN   TestAuthorisationMatrix
+=== RUN   TestAuthorisationMatrix/anonymous_pull_from_a_proxy_namespace
+=== RUN   TestAuthorisationMatrix/anonymous_pull_from_a_private_namespace_is_challenged
+=== RUN   TestAuthorisationMatrix/anonymous_push_is_challenged
+=== RUN   TestAuthorisationMatrix/push_to_the_read-only_proxy_namespace_is_denied
+=== RUN   TestAuthorisationMatrix/push_to_another_user's_namespace_is_denied
+=== RUN   TestAuthorisationMatrix/owner_may_push_to_their_own_namespace
+=== RUN   TestAuthorisationMatrix/any_authenticated_user_may_push_to_a_shared_namespace
+=== RUN   TestAuthorisationMatrix/admin_may_push_anywhere_local
+=== RUN   TestAuthorisationMatrix/catalog_is_admin-only
+=== RUN   TestAuthorisationMatrix/unknown_paths_are_404,_not_a_namespace
+--- PASS: TestAuthorisationMatrix (1.18s)
+=== RUN   TestDegradedServesCache
+--- PASS: TestDegradedServesCache (0.87s)
+=== RUN   TestDockerClient
+--- SKIP: TestDockerClient (0.00s)
+ok  	github.com/watsons/rms/test/e2e	6.690s

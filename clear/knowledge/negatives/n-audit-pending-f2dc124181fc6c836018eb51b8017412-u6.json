@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-f2dc124181fc6c836018eb51b8017412-u6",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "账本坐标里 refute/inconclusive 的 evidence 内容不可读,且只登记了一条:e-gqu8jh(refute)在全库只出现在以往审计卡的异常文字里,e-vjvdf4(refute)与 e-d23908(inconclusive)在仓库与副本中零命中;因此无人能说明它们推翻/存疑的是哪条观测。已登记的只有 e-gqu8jh(交给人)。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "评估者列出的三条账本 evidence（`e-gqu8jh` refute、`e-vjvdf4` refute、`e-d23908` inconclusive）在工作区与其副本里都为零命中或只出现在审计卡的异常文字中，我读不到它们的正文，因此无法判断它们各自推翻/存疑的是哪条观测，也无法在本轮把它们检验掉。影响：若其中任何一条针对的是本次四条判断的某条观测，需要账本持有者把内容摆出来我才能复检；本轮四条判断已由独立评估者在副本里复跑门禁、真实上游探针与 103 现场后判为成立。交给人。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:f2dc124181fc6c836018eb51b8017412#u6",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791859689744,
+  "updated": 1791862477398
+}

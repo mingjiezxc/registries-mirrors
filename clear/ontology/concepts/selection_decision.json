@@ -1,0 +1,6 @@
+{
+  "gloss": "在存在该仓库的候选里取探测耗时最小者为服务方，按 probe_ttl 缓存；仅在 GET/HEAD 且服务失败时重选一次。",
+  "id": "selection_decision",
+  "kind": "phenomenon",
+  "label": "选择决策"
+}

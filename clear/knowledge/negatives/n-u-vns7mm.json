@@ -1,0 +1,40 @@
+{
+  "id": "n-u-vns7mm",
+  "kind": "unresolved",
+  "status": "ruled_out",
+  "statement": "预测 rms 的 401 挑战最多导致 docker 回落官方 Hub 后拉取成功;实际探测期间 103 直连 registry-1.docker.io 与 auth.docker.io 连续两次 read: connection reset by peer,回落也失败(同一时段 curl https://registry-1.docker.io/v2/ 仍能拿到 401、5.8s)。",
+  "touches": [
+    "up_registry_1_docker_io"
+  ],
+  "evidence": [],
+  "about": [
+    "host_103",
+    "up_registry_1_docker_io",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "ruled_out",
+    "reason": "与 u-iiyp8u 是同一条登记(第一次 AdvancePlan 因缺 basis 被拒时已落账,重试又记了一次),内容逐字相同,保留 u-iiyp8u 即可。",
+    "by": null
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-vns7mm",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791810726676,
+  "updated": 1791812508600
+}

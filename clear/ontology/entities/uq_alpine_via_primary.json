@@ -1,0 +1,11 @@
+{
+  "id": "uq_alpine_via_primary",
+  "label": "经 5000 主端点拉 alpine 的无限定请求",
+  "type": "unqualified_request",
+  "basis": "s2/s3/s4 的检验靶子：GET|HEAD http://<rms>:5000/v2/library/alpine/manifests/<ref> 与 /v2/nonexistent/manifests/v1",
+  "provenance": {
+    "kind": "named",
+    "ref": "test/e2e/e2e_test.go"
+  },
+  "note": "改前落到 namespaces.default；改后由并发选择决定服务方。"
+}

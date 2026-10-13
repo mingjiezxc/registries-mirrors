@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-36560ac14303f8ad1d78af916ed415af-u2",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "reports/103-selection-rollout.md:107 的 dhi.io=813.528ms 归给 reports/raw/103-final-live-10ns.txt 第 2 节，而该文件现值是 1.102377s（旧值见 clear/evidence/audits/…/c3939aff….json:58）——引用了已被覆盖的旧抓取，清单未登记",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "同上：813.528ms 属于上一版抓取（该次抓取已被重建后的镜像覆盖）。上线记录第 107 行已改成当前文件里的 `dhi.io=1.102377s`，并明确注明「此前那一版文件里的 813.528ms 已随镜像重建失效」。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:36560ac14303f8ad1d78af916ed415af#u2",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791864764907,
+  "updated": 1791864784128
+}

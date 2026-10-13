@@ -1,0 +1,10 @@
+{
+  "basis": "代理 namespace 之一,对应 /data/registry.k8s.io",
+  "id": "ns_registry_k8s_io",
+  "label": "registry.k8s.io namespace",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml"
+  },
+  "type": "namespace"
+}

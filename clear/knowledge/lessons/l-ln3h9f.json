@@ -1,0 +1,36 @@
+{
+  "id": "l-ln3h9f",
+  "goal": "g-mv5eqq0n96w2",
+  "text": "探测远端仓库时不要只看状态码：Docker Hub 对「不存在的仓库」回 401、ghcr/gcr 的匿名 token 端点回 403。把这些当成「上游故障」会让每个未缓存的无限定请求都返回 503；只有传输失败与 5xx/429 才算「没答」。",
+  "kind": "trap",
+  "about": [
+    "selection_probe",
+    "ns_ghcr_io",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "evidence": "103 上线实测：拼错镜像名返回 503，决策日志显示 gcr.io/ghcr.io/quay.io 被判 unreachable；-noaccept 对照确认那些 401 是认证判决而非内容协商假象。",
+  "boundary": "对使用 Basic 认证的私有上游、或需要凭据才能读的仓库，这条口径不适用（这类请求会 404 而非 403）。",
+  "scope_spec": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "basis": "代码与用例实证该口径：probe.go:341-348/404-422 把认证走完的 401/403/404 判 absent、5xx/429/传输失败判 not-an-answer，TestServerErrorsAreNotAbsence、TestTransportFailuresAreNotAbsence 通过，103 现场返回 404 而非 503。",
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "active",
+  "at": 1791865480018
+}

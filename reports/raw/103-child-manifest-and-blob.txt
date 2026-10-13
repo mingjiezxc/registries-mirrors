@@ -1,0 +1,34 @@
+# 103 子 manifest 与 blob 读数原文（含请求头，2026-10-13T10:13:00+08:00）
+# 说明：manifest 请求必须带 Accept（不带会被上游按内容协商判 404，见 reports/raw/selection-real-upstream.txt §8）
+## 1. 子 manifest（实际命令：curl -H "Accept: <4 个 media type>" /v2/alpine/manifests/<digest>）
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" http://127.0.0.1:5000/v2/alpine/manifests/sha256:b58899f069c47216f6002a6850143dc6fae0d35eb8b0df9300bbe6327b9c2171
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" ... (rep1)
+    → http=200 t=0.004599s bytes=1022
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" http://127.0.0.1:5000/v2/alpine/manifests/sha256:b58899f069c47216f6002a6850143dc6fae0d35eb8b0df9300bbe6327b9c2171
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" ... (rep2)
+    → http=200 t=0.001232s bytes=1022
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" http://127.0.0.1:5000/v2/alpine/manifests/sha256:b58899f069c47216f6002a6850143dc6fae0d35eb8b0df9300bbe6327b9c2171
+  $ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json" ... (rep3)
+    → http=200 t=0.001252s bytes=1022
+## 1b. 同一路径不带 Accept（对照，应 404：内容协商）
+    → http=404（不带 Accept）
+## 2. 无仓库名 blob（blob 不需要 Accept；实际命令：curl /v2/blobs/<digest>）
+  $ curl http://127.0.0.1:5000/v2/blobs/sha256:83b2b6703a620bf2e001ab57f7adc414d891787b3c59859b1b62909e48dd2242 (rep1)
+    → http=200 t=0.002570s bytes=581
+  $ curl http://127.0.0.1:5000/v2/blobs/sha256:83b2b6703a620bf2e001ab57f7adc414d891787b3c59859b1b62909e48dd2242 (rep2)
+    → http=200 t=0.002752s bytes=581
+  $ curl http://127.0.0.1:5000/v2/blobs/sha256:83b2b6703a620bf2e001ab57f7adc414d891787b3c59859b1b62909e48dd2242 (rep3)
+    → http=200 t=0.002901s bytes=581
+## 2b. 带仓库名的 blob（本次修复的那条路径）
+  $ curl http://127.0.0.1:5000/v2/library/busybox/blobs/sha256:034d6572bf28… (rep1)
+    → http=200 t=4.666703s bytes=2206402
+  $ curl http://127.0.0.1:5000/v2/library/busybox/blobs/sha256:034d6572bf28… (rep2)
+    → http=200 t=0.004116s bytes=2206402
+  $ curl http://127.0.0.1:5000/v2/library/busybox/blobs/sha256:034d6572bf28… (rep3)
+    → http=200 t=0.006821s bytes=2206402
+## 3. 不存在的 digest blob
+    {"errors":[{"code":"BLOB_UNKNOWN","message":"blob unknown to registry","detail":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}]}
+        → http=404
+## 4. kind=blob 决策日志（完整行）
+  {"time":"2026-10-13T02:13:05.524934058Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+  {"time":"2026-10-13T02:13:05.537258266Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}

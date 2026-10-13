@@ -1,0 +1,10 @@
+{
+  "basis": "旧栈 15004 端口,接管后由 rms 的 ghcr.io 监听器顶替",
+  "id": "pb_15004",
+  "label": "15004 端口绑定(ghcr.io)",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml listeners"
+  },
+  "type": "ns_port_binding"
+}

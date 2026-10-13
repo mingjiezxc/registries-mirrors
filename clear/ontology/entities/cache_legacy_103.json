@@ -1,0 +1,10 @@
+{
+  "basis": "docker 42G、ghcr 8.2G、quay 526K、gcr/k8s 512B,布局 <ns>/docker/registry/v2/{blobs,repositories}",
+  "id": "cache_legacy_103",
+  "label": "旧 registry:2 的 proxy 缓存",
+  "provenance": {
+    "kind": "named",
+    "ref": "/opt/stacks/registry/data"
+  },
+  "type": "dataset"
+}

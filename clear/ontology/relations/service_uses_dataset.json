@@ -1,0 +1,7 @@
+{
+  "domain": "service",
+  "id": "service_uses_dataset",
+  "kind": "affects",
+  "label": "服务使用数据集作为缓存",
+  "range": "dataset"
+}

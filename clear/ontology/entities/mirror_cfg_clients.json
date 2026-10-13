@@ -1,0 +1,10 @@
+{
+  "basis": "两条 registry-mirrors 条目都按 15000 docker.io、15001 daocloud、15002 1ms、15003 gcr、15004 ghcr、15005 k8s、15006 quay 的顺序列出 103 的镜像端点",
+  "id": "mirror_cfg_clients",
+  "label": "101 与 103 的 daemon.json registry-mirrors 列表",
+  "provenance": {
+    "kind": "named",
+    "ref": "/etc/docker/daemon.json"
+  },
+  "type": "registry_mirrors"
+}

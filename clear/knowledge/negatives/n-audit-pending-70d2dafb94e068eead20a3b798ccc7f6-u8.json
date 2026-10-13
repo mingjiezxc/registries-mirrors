@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-70d2dafb94e068eead20a3b798ccc7f6-u8",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "已升格的四条阶段事实（如 clear/knowledge/facts/f-udxt0n.json:21）的 scope 写「上游=docker.1ms.run,registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io」（6 个上游），而交付态是 10 个 proxy namespace（clear/goals/g-mv5eqq0n96w2.md:16、deploy/103/rms.yaml:57-135），事实范围是否覆盖交付态无人说明。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "评估者指出：已升格的四条阶段事实（`f-udxt0n` 等）的 scope 写的是**当时的六个官方上游**，而交付态已扩到 10 个 namespace（含 daocloud 镜像与 k8s.gcr.io 别名）。这四条事实由系统在独立核验达级后写入，是系统所有的记录，我没有写权限；若它们的 scope 不覆盖交付态，引用时应按它们登记的边界读。本轮结论的现场部分已改用交付态抓取（`reports/raw/103-final-live-10ns.txt`，10 候选）作为依据，不依赖旧 scope。是否需要扩写这四条事实的 scope，交给人/系统裁决。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:70d2dafb94e068eead20a3b798ccc7f6#u8",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791864173662,
+  "updated": 1791864265710
+}

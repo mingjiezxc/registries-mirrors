@@ -1,0 +1,10 @@
+{
+  "basis": "代理 namespace 之一,对应 /data/ghcr.io",
+  "id": "ns_ghcr_io",
+  "label": "ghcr.io namespace",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml"
+  },
+  "type": "namespace"
+}

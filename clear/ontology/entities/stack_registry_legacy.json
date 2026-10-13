@@ -1,0 +1,10 @@
+{
+  "basis": "8 个容器:15000 docker.io、15001 daocloud、15002 1ms、15003 gcr、15004 ghcr、15005 k8s、15006 quay、15008 私有",
+  "id": "stack_registry_legacy",
+  "label": "103 上原 /opt/stacks/registry 的 registry:2 栈",
+  "provenance": {
+    "kind": "named",
+    "ref": "/opt/stacks/registry/docker-compose.yml"
+  },
+  "type": "service_stack"
+}

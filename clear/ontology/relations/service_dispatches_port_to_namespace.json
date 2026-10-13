@@ -1,0 +1,8 @@
+{
+  "check": "listeners 里每个端口的 namespace 与实际落盘目录一致",
+  "domain": "service",
+  "id": "service_dispatches_port_to_namespace",
+  "kind": "defines",
+  "label": "服务按端口分派到 namespace",
+  "range": "namespace"
+}

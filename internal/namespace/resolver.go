@@ -3,16 +3,15 @@
 //
 // Two request shapes exist:
 //
-//   - multi-namespace (the primary listener): /v2/<namespace>/<repo>...
-//     The namespace is either an upstream domain (docker.io, ghcr.io), a
-//     writable local namespace, or absent — in which case the configured
-//     default namespace is used, implementing
-//     "rms/<user>/<image> -> rms/<default>/<user>/<image>".
+//   - unqualified (the primary listener): /v2/<namespace>/<repo>... when the
+//     first segment names a configured namespace, or /v2/<repo>... when it does
+//     not. An unqualified request is not rewritten to a default namespace: the
+//     Resolution comes back with NeedsSelection set and the repository left as
+//     the client wrote it, and the dispatcher asks the selector which proxy
+//     namespace really has it.
 //
-//   - namespace-bound (an extra listener): /v2/<repo>... where the namespace is
-//     implied by the socket. This exists because neither docker's
-//     registry-mirrors nor containerd's registries.yaml can express a path
-//     between /v2/ and the repository name.
+//   - namespace-bound (a listener built by the caller): /v2/<repo>... where the
+//     namespace is implied by the socket argument passed to Resolve.
 //
 // Proxy namespaces are read-only pull-through caches, so the engine must see
 // the repository name *without* the namespace prefix: the namespace's
@@ -61,7 +60,8 @@ func (k Kind) String() string {
 
 // Resolution is the outcome of routing a request.
 type Resolution struct {
-	// Namespace serving the request. Empty for KindBase and KindCatalog.
+	// Namespace serving the request. Empty for KindBase, KindCatalog, and for
+	// a request that still needs the selector to decide.
 	Namespace string
 	// Mode of the resolved namespace.
 	Mode config.Mode
@@ -69,15 +69,27 @@ type Resolution struct {
 	Kind Kind
 	// EnginePath is the path handed to the namespace's registry engine.
 	EnginePath string
-	// Repo is the repository name as the engine will see it ("" when unknown).
+	// Upstream is the upstream endpoint of Namespace that serves this request,
+	// when one was chosen. It is empty when the namespace's sticky engine is to
+	// be used: a cached resolution, a namespace with no upstream, or a request
+	// whose upstream decision was best-effort and did not settle.
+	Upstream string
+	// Repo is the repository name as the engine will see it. For a request that
+	// NeedsSelection it is the repository name exactly as the client wrote it
+	// (no namespace prefix, no library/ injection — those are per-candidate).
 	Repo string
+	// NeedsSelection marks an unqualified request: the path named no configured
+	// namespace, so the dispatcher must ask the selector which proxy namespace
+	// serves it before the request can be forwarded. Namespace, Mode and
+	// EnginePath are all empty in that case; Repo carries the requested
+	// repository so the selector can probe candidates.
+	NeedsSelection bool
 }
 
 // Table is the resolved namespace table. It is immutable once built.
 type Table struct {
-	defaultNS string
-	local     map[string]struct{}
-	proxy     map[string]config.ProxyNamespace
+	local map[string]struct{}
+	proxy map[string]config.ProxyNamespace
 }
 
 // NewTable builds a routing table. localNames are additional writable
@@ -85,9 +97,8 @@ type Table struct {
 // when auth.user_namespace is enabled.
 func NewTable(cfg *config.Config, localNames []string) *Table {
 	t := &Table{
-		defaultNS: cfg.Namespaces.Default,
-		local:     make(map[string]struct{}, len(cfg.Namespaces.Local)+len(cfg.Auth.SharedNamespaces)+len(localNames)),
-		proxy:     cfg.Namespaces.Proxy,
+		local: make(map[string]struct{}, len(cfg.Namespaces.Local)+len(cfg.Auth.SharedNamespaces)+len(localNames)),
+		proxy: cfg.Namespaces.Proxy,
 	}
 	// Local and proxy names cannot overlap: configuration validation requires
 	// proxy keys to be domain-like and local names not to be.
@@ -105,9 +116,6 @@ func NewTable(cfg *config.Config, localNames []string) *Table {
 	}
 	return t
 }
-
-// Default returns the namespace unqualified requests fall back to.
-func (t *Table) Default() string { return t.defaultNS }
 
 // IsLocal reports whether name is a writable namespace.
 func (t *Table) IsLocal(name string) bool {
@@ -130,6 +138,16 @@ func (t *Table) Mode(name string) (config.Mode, bool) {
 		return config.ModeProxy, true
 	}
 	return "", false
+}
+
+// ProxyNames returns the pull-through cache namespaces, sorted.
+func (t *Table) ProxyNames() []string {
+	out := make([]string, 0, len(t.proxy))
+	for n := range t.proxy {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ProxyConfig returns the settings for a proxy namespace.
@@ -179,6 +197,19 @@ func (t *Table) Resolve(listenerNS, urlPath string) (Resolution, error) {
 
 	repo, op := splitRepoOp(repoPath)
 
+	if ns == "" {
+		// Unqualified: the path named no configured namespace, so the
+		// dispatcher must ask the selector which one really has the repository.
+		// The repository is left exactly as the client wrote it — the
+		// library/ injection is a per-candidate rule (see the dispatcher) — and
+		// the engine path is left empty because it depends on the winner.
+		return Resolution{
+			Kind:           KindRepository,
+			Repo:           repo,
+			NeedsSelection: true,
+		}, nil
+	}
+
 	// Docker Hub treats a single-segment repository as library/<name>. The
 	// test is applied to the repository alone, never to the operation suffix.
 	if mode, _ := t.Mode(ns); mode == config.ModeProxy && repo != "" && !strings.Contains(repo, "/") {
@@ -226,9 +257,9 @@ func (t *Table) route(listenerNS, first, tail string, hasTail bool) (ns, repoPat
 		return first, join(first, tail, hasTail), nil
 
 	default:
-		// Unqualified: apply the default namespace, implementing
-		// rms/<user>/<image> -> rms/<default>/<user>/<image>.
-		return t.defaultNS, join(first, tail, hasTail), nil
+		// Unqualified: no configured namespace matched, so the selector decides
+		// which proxy namespace serves it (see Resolution.NeedsSelection).
+		return "", join(first, tail, hasTail), nil
 	}
 }
 

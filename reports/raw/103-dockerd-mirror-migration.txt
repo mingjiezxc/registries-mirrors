@@ -1,0 +1,22 @@
+# 103 自身 dockerd 镜像源迁移（2026-10-13T10:15:31+08:00）
+  JSON_OK mirrors= ['http://127.0.0.1:5000']
+  insecure= ['127.0.0.1:5000', '192.168.188.103:5000', '192.168.188.103:15008', '10.82.64.172:5000', '10.82.64.172:5001']
+  备份：/etc/docker/daemon.json.bak-20261013-021532
+  docker info: http://127.0.0.1:5000/
+  容器状态（前 8 个）：
+rms Up 17 seconds (healthy)
+trendradar Up 17 seconds
+trendradar-mcp Up 17 seconds
+rsshub Up 17 seconds
+rsshub-redis Up 17 seconds
+grafana-otel-lgtm Up 15 seconds (health: starting)
+chrome-vnc Up 17 seconds
+hindsight-app Up 17 seconds
+  容器总数：31
+
+## 迁移后在 103 本地构建（验证自镜像源可用）
+#14 DONE 0.3s
+
+#15 [rms] resolving provenance for metadata file
+#15 DONE 0.0s
+  构建后镜像：062d62246c1b Less than a second ago

@@ -1,0 +1,189 @@
+# rms 配置 — 192.168.188.103(公共容器环境)
+#
+# 与仓库根目录的 config/rms.yaml 的差别:
+#   1. namespace 更多(10 个,含 daocloud 镜像与 k8s.gcr.io 别名),且**官方上游优先、
+#      daocloud 镜像兜底** —— 顺序由 103 现场实测决定:最初配成镜像优先时,决策行显示
+#      ghcr.io/gcr.io 恒为 unreachable:upstream-status(镜像回 5xx),而 /v2/ 探活正常。
+#      逐条理由见各 namespace 的注释与 ../reports/103-selection-rollout.md 的「两处刻意偏离」;
+#   2. 上游出网走局域网代理 RMS_UPSTREAM_PROXY(见 .env),不是直连。
+#
+# 已删除的旧形态(2026-10-13):
+#   - namespaces.default:无限定请求不再改写成一个固定仓库,改为并发探测所有
+#     proxy namespace、挑真有该镜像且最快的一个;
+#   - listeners 与 anonymous_root:按 namespace 绑定的独立端口
+#     整体下线,只剩主端点 5000 与指标 9100。
+#
+# 每个值都支持 ${VAR} / ${VAR:-default};引用未定义且无默认值的变量会让启动失败。
+
+server:
+  # 主端点:多 namespace,路径里写 namespace,也是推送入口。
+  #   docker pull 192.168.188.103:5000/docker.io/library/alpine
+  #   docker push 192.168.188.103:5000/<user>/app:v1
+  listen: "0.0.0.0:5000"
+  # 直连访问,留空表示按请求推导来源(上传 URL 用)。
+  external_url: "${RMS_EXTERNAL_URL:-}"
+  http_secret: "${RMS_HTTP_SECRET:-}"
+  behind_proxy: false
+  graceful_shutdown: 20s
+
+storage:
+  root: "${RMS_STORAGE_ROOT:-/data}"
+  delete_enabled: true
+  upload_purge:
+    enabled: true
+    age: 168h
+    interval: 24h
+
+auth:
+  type: htpasswd
+  htpasswd: "${RMS_HTPASSWD:-/etc/rms/htpasswd}"
+  realm: rms
+  user_namespace: true
+  shared_namespaces: [me, shared]
+  # 代理 namespace 是公共缓存,匿名可读;本地 namespace 保持私有。
+  anonymous_pull_proxy: true
+  anonymous_pull_local: false
+  admin_users: [admin]
+
+namespaces:
+  # 无限定请求(路径里没有 namespace)由这里决定怎么挑:并发探测下面所有 proxy
+  # namespace,取真的有该仓库、响应最快的那个。旧配置里的 default: docker.io
+  # 已彻底删除 —— 写一个固定仓库既漏(ghcr.io 的镜像永远拉不到),又慢(绑死一条路)。
+  selection:
+    # 同 (仓库, tag/digest) 的决策复用多久再重新探测;也是「仓库亲和」窗口:
+    # blob 请求路径里没有仓库名,它复用同仓库 manifest 的决策,随这个 TTL 一起过期。
+    # 窗口内不再并发探测(上游连接数不随 layer 数放大)。
+    probe_ttl: 30s
+    # 单个候选探测的上限,同时也是未命中缓存时请求等待决策的上限。
+    # 与 upstream.health.timeout 同量级:走代理时 quay.io/registry.k8s.io 实测 4-5s。
+    probe_timeout: 10s
+    # 软截止:第一个探测答出之后再等 3s 就用已有结果决策,未答的候选记为
+    # skipped(decision deadline)。10 个 namespace 里只要有一个镜像站卡住,
+    # 「等全部」就要按 probe_timeout 付费,而冷请求的观感就是这一下。
+    # 0 = 等全部。必须 <= probe_timeout。
+    decision_deadline: 3s
+    # 均衡:digest 一致、且延迟在 balance_window 倍以内的上游之间按 1/延迟
+    # 加权轮询;窗口外的镜像不参与均衡(只在当选者失败时接手)。
+    # weighted | round_robin | off
+    balance: weighted
+    balance_window: 1.5
+
+  proxy:
+    docker.io:
+      # 顺序 = digest 权威顺序(默认并发竞争,不再是「第一个健康的当选直到失败」):
+      # 这些上游会被**并发**探测,配置顺序里第一个答出内容的那台定义该 tag 的
+      # digest;其余上游只有 digest 与之相同才会被服务/被均衡。所以「官方在前」
+      # 的含义是「官方定义这口 tag 的内容,镜像站只在与之一致时接手」。
+      # 想要旧的严格顺序语义,给这个 namespace 加 `upstream_race: false`。
+      #
+      # 2026-10-12 在 .103 上的实测(同一个 2.2MB layer):
+      #   daocloud 直连      295 KB/s(小 blob 行,但见下)
+      #   1ms 直连            12 KB/s,90s 未传完
+      #   1ms 走局域网代理    168 KB/s,完整
+      #   官方 Hub 直连       连不上(000)
+      #   官方 Hub 走代理     13.7 KB/s,90s 未传完
+      #
+      # 而 daocloud 在大 blob 上会挂:它把 blob 302 到
+      # image-mirror.r2.daocloud.vip(Cloudflare R2),rms 侧那条 HTTP/2 请求
+      # 「timeout awaiting response headers」卡满 60s 才失败(日志原文见
+      # ../../../reports/103-rms-deploy.md),客户端只能靠 docker 反复重试,
+      # 实测一次 3MB 的 alpine 拉取要 4 分钟。daocloud 的 token 又绑客户端 IP,
+      # 一旦走代理就直接 401,所以它跟下面的 proxy 设置互斥 —— 干脆不用它。
+      #
+      # 于是:1ms 优先(经代理稳定可用),官方 Hub 兜底。官方直连不可达、
+      # 经代理也很慢,但作为最后一道仍然好过没有。
+      #
+      # 2026-10-13 增补:按人的要求补上 docker.m.daocloud.io,但**排在最后**。
+      # 理由就是上面那段实测:daocloud 的失败形态是「/v2/ 探活正常、取内容失败」
+      # (blob 302 到 R2 后挂满 60s;token 绑客户端 IP,走代理直接 401)。
+      # 并发模式下这条更有意义了:内容探测的结论会回灌健康状态,连续失败即进
+      # 冷却期(不再进入候选),所以「探活正常、取内容失败」会被自动切走;
+      # 同时 daocloud 与官方 digest 不一致时也不会被当权威。
+      upstreams:
+        - "https://docker.1ms.run"
+        - "https://registry-1.docker.io"
+        - "https://docker.m.daocloud.io"
+      # 与 Docker Hub 一致:单段仓库名注入 library/。
+      official_library: true
+      # 0 = 不过期,同时不安装 distribution 的 TTL 调度器(上游切换重建引擎时
+      # 两个调度器会争用同一份 scheduler-state.json)。
+      ttl: 0
+
+    ghcr.io:
+      # 2026-10-13:官方优先、daocloud 镜像兜底(**顺序与最初设想相反**,理由如下)。
+      # 最初按镜像优先配成 ["ghcr.m.daocloud.io", "https://ghcr.io"],但 103 上线后
+      # 决策日志显示这两个 namespace 恒为 unreachable:upstream-status —— 即镜像
+      # 对这些路径回 5xx。/v2/ 探活正常不代表能取内容(同 docker.io 那段记录的
+      # daocloud 失败形态)。因此改成官方在前,镜像只在官方失败时接手。
+      upstreams: ["https://ghcr.io", "https://ghcr.m.daocloud.io"]
+
+    gcr.io:
+      upstreams: ["https://gcr.io", "https://gcr.m.daocloud.io"]
+
+    quay.io:
+      upstreams: ["https://quay.io", "https://quay.m.daocloud.io"]
+
+    registry.k8s.io:
+      upstreams: ["https://registry.k8s.io", "https://k8s.m.daocloud.io"]
+
+    # --- 2026-10-13 新增(按人的表格)--------------------------------------
+    # 左侧是客户端写的 namespace,右侧是实际代理的上游。全部实测可达:
+    # 九个 daocloud 镜像的 /v2/ 都在 0.17-0.21s 内回 401(见
+    # reports/raw/daocloud-mirrors-probe.txt)。
+    docker.elastic.co:
+      upstreams: ["https://elastic.m.daocloud.io"]
+
+    dhi.io:
+      upstreams: ["https://dhi.m.daocloud.io"]
+
+    k8s.gcr.io:
+      # k8s.gcr.io 是废弃名,官方已迁到 registry.k8s.io —— 这里不是 daocloud
+      # 镜像,而是把旧名映射到官方新域名,让老镜像名继续可用。
+      upstreams: ["https://registry.k8s.io"]
+
+    mcr.microsoft.com:
+      upstreams: ["https://mcr.m.daocloud.io"]
+
+    nvcr.io:
+      upstreams: ["https://nvcr.m.daocloud.io"]
+
+# listeners 整段删除:那些按 namespace 绑定的端口已下线,连同
+# anonymous_root 一起不再存在。只剩主端点 5000(见 server.listen)与指标 9100
+# (见 observability.metrics.listen)。迁移口径见 deploy/103/README.md。
+
+upstream:
+  health:
+    enabled: true
+    interval: 30s
+    timeout: 10s
+    fail_threshold: 2
+    success_threshold: 1
+    path: /v2/
+
+  http:
+    # 走局域网代理。实测:1ms 直连只有 12 KB/s 且传不完,经这个代理 168 KB/s
+    # 完整;官方 Hub 直连直接不可达。旧的 registry:2 栈在 .103 上也是给
+    # reg-docker/reg-ghcr/reg-gcr/reg-k8s/reg-quay 配了同一个代理。
+    proxy: "${RMS_UPSTREAM_PROXY:-}"
+    # 回环、局域网与 SASE 可达的公司网段绝不能走代理。
+    no_proxy: "${RMS_NO_PROXY:-localhost,127.0.0.1,192.168.188.0/24,10.82.0.0/16,10.44.0.0/16}"
+    dial_timeout: 10s
+    response_header_timeout: 60s
+    tls_handshake_timeout: 10s
+    idle_conn_timeout: 90s
+    insecure_skip_verify: false
+
+observability:
+  logs:
+    level: info
+    format: json
+  traces:
+    # SigNoz/OTLP 接收端就在本机(grafana-otel-lgtm,宿主 4317)。
+    enabled: true
+    endpoint: "192.168.188.103:4317"
+    insecure: true
+    sample_ratio: 0.2
+  metrics:
+    listen: "0.0.0.0:9100"
+    path: /metrics
+  pprof: false

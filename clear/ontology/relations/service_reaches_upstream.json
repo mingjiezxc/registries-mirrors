@@ -1,0 +1,8 @@
+{
+  "check": "rms_namespace_up 与 /readyz 对该上游的取值",
+  "domain": "service",
+  "id": "service_reaches_upstream",
+  "kind": "affects",
+  "label": "服务可达上游端点",
+  "range": "upstream"
+}

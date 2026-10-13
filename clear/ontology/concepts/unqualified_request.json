@@ -1,0 +1,6 @@
+{
+  "gloss": "路径里第一个片段不是已配置 namespace 的 /v2/<repo>... 请求；改前固定落到 namespaces.default，改后由并发选择决定服务方。",
+  "id": "unqualified_request",
+  "kind": "phenomenon",
+  "label": "无限定请求"
+}

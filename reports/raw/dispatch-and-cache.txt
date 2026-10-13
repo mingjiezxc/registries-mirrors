@@ -1,0 +1,99 @@
+############ 分派证据:各端口 → 各自 namespace, 2026年 10月 12日 星期一 22:58:59 CST ############
+----- 15003(gcr.io)真实拉取 -----
+Digest: sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+Status: Downloaded newer image for 127.0.0.1:15003/distroless/static-debian12:nonroot
+127.0.0.1:15003/distroless/static-debian12:nonroot
+
+real	0m1.174s
+user	0m0.016s
+sys	0m0.011s
+----- 15005(registry.k8s.io)真实拉取 -----
+Digest: sha256:7031c1b283388d2c2e09b57badb803c05ebed362dc88d84b480cc47f72a21097
+Status: Downloaded newer image for 127.0.0.1:15005/pause:3.9
+127.0.0.1:15005/pause:3.9
+
+real	0m10.380s
+user	0m0.015s
+sys	0m0.010s
+----- 15004(ghcr.io)与 15006(quay.io)清单请求原始响应 -----
+----- curl -si http://127.0.0.1:15004/diygod/rsshub/manifests/latest -----
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://127.0.0.1:15004/browserless/chrome/manifests/latest -----
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+Docker-Distribution-Api-Version: registry/2.0
+----- curl -si http://127.0.0.1:15006/jetstack/cert-manager-cainjector/manifests/v1.14.4 -----
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+Docker-Distribution-Api-Version: registry/2.0
+----- 四个 namespace 目录里近 20 分钟新增的对象(原始 find 输出)-----
+--- gcr.io ---
+--- registry.k8s.io ---
+--- ghcr.io ---
+--- quay.io ---
+
+############ 缓存命中证据(alpine:3.20,迁移过来的旧缓存里已有) 2026年 10月 12日 星期一 22:59:11 CST ############
+----- 拉取前 metrics -----
+rms_cache_hits_total{namespace="docker.io"} 14
+rms_cache_hits_total{namespace="gcr.io"} 4
+rms_cache_hits_total{namespace="registry.k8s.io"} 5
+rms_cache_misses_total{namespace="docker.io"} 29
+----- 拉取(原始输出 + 耗时)-----
+Deleted: sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2
+Digest: sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+Status: Downloaded newer image for alpine:3.20
+docker.io/library/alpine:3.20
+
+real	0m3.861s
+user	0m0.010s
+sys	0m0.016s
+----- 拉取后 metrics -----
+rms_cache_hits_total{namespace="docker.io"} 19
+rms_cache_hits_total{namespace="gcr.io"} 4
+rms_cache_hits_total{namespace="registry.k8s.io"} 5
+rms_cache_misses_total{namespace="docker.io"} 29
+----- 该次拉取在 rms 侧的逐请求记录(含 blob 耗时)-----
+2026-10-12T14:59:15.926Z 192.168.188.103:44354 GET 6f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc 200 970.86µs
+2026-10-12T14:59:15.957Z 192.168.188.103:44360 GET 0178b30c95835354e34c4e4febc4badfe27102879de0483b5e 200 605.363µs
+2026-10-12T14:59:15.973Z 192.168.188.103:44374 GET 0e728d5b4b383a8ba730d72dae7236fbc8dff97ed6b224a731 200 3.812823ms
+2026-10-12T14:59:15.976Z 192.168.188.103:44384 GET eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471 200 6.755478ms
+----- ghcr.io(15004)用缓存里的 digest 取清单(绕开 tag 回源)-----
+curl -si http://127.0.0.1:15004/v2/diygod/rsshub/manifests/sha256:800b6d4ba5b5365e30d078b1be77f786b39aec740af0ca7a18bdd201ce8d9a95
+HTTP/1.1 200 OK
+Content-Type: application/vnd.oci.image.index.v1+json
+Docker-Content-Digest: sha256:800b6d4ba5b5365e30d078b1be77f786b39aec740af0ca7a18bdd201ce8d9a95
+
+----- 四个 namespace 目录近 60 分钟新增的文件(原始 find,无 maxdepth)-----
+bash: 第 1 行： printf: --: 无效的选项
+printf: 用法： printf [-v var] 格式 [参数]
+      repositories/distroless/static-debian12/_manifests/revisions/sha256/afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab/link
+      repositories/distroless/static-debian12/_manifests/revisions/sha256/52dcfbabb7457ea47c82f6e13af8c8a4a1d9f7b0145142b3ecab20f2b888411d/link
+      repositories/distroless/static-debian12/_manifests/tags/nonroot/index/sha256/afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab/link
+      repositories/distroless/static-debian12/_manifests/tags/nonroot/current/link
+bash: 第 1 行： printf: --: 无效的选项
+printf: 用法： printf [-v var] 格式 [参数]
+      blobs/sha256/61/61fec91190a0bab34406027bbec43d562218df6e80d22d4735029756f23c7007/data
+      blobs/sha256/e6/e6f1816883972d4be47bd48879a08919b96afcd344132622e4d444987919323c/data
+      blobs/sha256/8d/8d4106c88ec0bd28001e34c975d65175d994072d65341f62a8ab0754b0fafe10/data
+      blobs/sha256/70/7031c1b283388d2c2e09b57badb803c05ebed362dc88d84b480cc47f72a21097/data
+bash: 第 1 行： printf: --: 无效的选项
+printf: 用法： printf [-v var] 格式 [参数]
+      repositories/diygod/rsshub/_manifests/tags/latest/index/sha256/ed5a79cd9cc1c69db5759a17c23546434c448e5e3b7fda043479b52d1b69e0d5/link
+      repositories/diygod/rsshub/_manifests/tags/latest/current/link
+      repositories/diygod/rsshub/_manifests/revisions/sha256/ed5a79cd9cc1c69db5759a17c23546434c448e5e3b7fda043479b52d1b69e0d5/link
+      repositories/browserless/chrome/_manifests/tags/latest/index/sha256/1e0d769d2aec419f7c91ee2715d6596f073de33cdbfb8a9c48ddd6a9931160ba/link
+bash: 第 1 行： printf: --: 无效的选项
+printf: 用法： printf [-v var] 格式 [参数]
+      repositories/jetstack/cert-manager-cainjector/_manifests/revisions/sha256/30286297e5b4b71a86759d297a8109c6a1649fdc68d28f618d87edf12a2da417/link
+      repositories/jetstack/cert-manager-cainjector/_manifests/tags/v1.14.4/index/sha256/30286297e5b4b71a86759d297a8109c6a1649fdc68d28f618d87edf12a2da417/link
+      repositories/jetstack/cert-manager-cainjector/_manifests/tags/v1.14.4/current/link
+      blobs/sha256/30/30286297e5b4b71a86759d297a8109c6a1649fdc68d28f618d87edf12a2da417/data
+
+----- 同一时间窗内其他 namespace 有没有被误写(应各自独立)-----
+  gcr.io             近 60 分钟新增 8 个文件
+  registry.k8s.io    近 60 分钟新增 10 个文件
+  ghcr.io            近 60 分钟新增 8 个文件
+  quay.io            近 60 分钟新增 4 个文件
+  docker.io          近 60 分钟新增 96 个文件

@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-9ae1d8a67ea84d958f919c45a8c4ed23-u6",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "账本排除理由仍含被复算否定的数字、且其更正不可核对：clear/knowledge/negatives/n-u-i6k3wz.json:38 写「24 格里只有…2 格翻转」，我按 raw-proxy/raw-noaccept 逐格复算＝72 格中 6 格翻转；x-h-nccqnt.json:20/:23 的 scope 仍写 15000–15006（四条 uses 被判 out_of_scope）。做的人称以两份 Hindsight Correction 落地，工作区查不到，前一轮在 103:18888 查该 bank 亦为 0 篇。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "账本里的排除理由（`n-u-i6k3wz.json:38`）仍写「2 格翻转」，与逐格复算的 6 格不符——这我改不了：`clear/knowledge/**` 是系统文件（工作区里只有本体目录归模型编辑）。我已按系统的更正机制写入一份更正文档（Hindsight：Correction: 账本两处措辞过期——Accept 翻转 2 格→6 格；若干 negatives 的 scope 仍写 15000–15006），并在 `reports/selection-verification.md` 的「引用前必读」里写明「哪些条目 scope 已过期、机制仍成立」。评估者指出这份更正的正文不在工作区、无法核对——这正是需要人裁决的点：是否要把更正正文也落盘到工作区（我现在只被允许写本体目录之外的报告文件，账本 JSON 与记忆库都不在我的写权限内）。交给人。",
+    "by": "sp_library_alpine"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:9ae1d8a67ea84d958f919c45a8c4ed23#u6",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791860164891,
+  "updated": 1791862477398
+}

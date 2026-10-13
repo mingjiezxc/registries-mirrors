@@ -4,8 +4,8 @@
 # containerd: /etc/containerd/certs.d/<host>/hosts.toml (see the hosts.toml
 #             variant at the bottom), or the deprecated `registry.mirrors` block.
 #
-# WHY PORTS AND NOT PATHS
-# ----------------------
+# WHY THE MIRROR CANNOT CARRY A PATH
+# ----------------------------------
 # containerd builds a mirror request from the endpoint as follows
 # (core/remotes/docker/config/hosts.go):
 #
@@ -24,38 +24,49 @@
 # registry-mirrors is rejected outright by ValidateMirror, and registry-mirrors
 # only ever applies to Docker Hub.
 #
-# Therefore each upstream gets its own port on the rms side, and the namespace is
-# implied by the port. Client image names stay completely unqualified:
+# This is why the mirror endpoint below is a bare host:port with no path — rms
+# resolves the namespace itself. Point every Hub mirror at the PRIMARY endpoint:
 #
-#     docker.io/library/alpine  ->  http://<rms>:5001/v2/library/alpine/...
+#     docker.io/library/alpine  ->  http://192.168.188.101:5000/v2/library/alpine/...
+#
+# rms then probes every proxy namespace concurrently and serves the request from
+# the fastest one that really has that repository (namespaces.selection in
+# rms.yaml). The old per-upstream ports no longer exist.
+#
+# WHAT THIS COSTS
+# ---------------
+# With no namespace in the path, the client does not say which upstream it means.
+# For Docker Hub that is harmless: only the docker.io namespace has
+# `library/alpine`, so the unqualified request picks docker.io and the pull
+# works. For any other upstream it is not: an image that only lives on ghcr.io
+# asked for unqualified may be matched by a different namespace, or by none —
+# in which case rms answers 404 NAME_UNKNOWN. Two ways to be exact:
+#
+#   1. Put the namespace in the image name and use the primary endpoint:
+#         192.168.188.101:5000/ghcr.io/owner/app:tag
+#      (works with docker, containerd, podman — no mirror configuration at all);
+#   2. Pin one upstream with hosts.toml + override_path (bottom of this file).
 
 mirrors:
   docker.io:
     endpoint:
-      - "http://192.168.188.101:5001"
+      - "http://192.168.188.101:5000"
 
-  ghcr.io:
-    endpoint:
-      - "http://192.168.188.101:5002"
-
-  # Add a port-bound listener in rms's `listeners` for any further upstream, for
-  # example gcr.io:5003, then reference it here.
+  # No entry for ghcr.io/gcr.io/quay.io/registry.k8s.io: a mirror entry would
+  # send an unqualified name and leave the choice to rms. Use the namespace
+  # prefix in the image name instead (see above).
 
 configs:
   # Credentials are only needed for private (local) namespaces. Public cache
   # namespaces are readable anonymously, so omit the block entirely if you only
   # mirror.
-  "192.168.188.101:5001":
+  "192.168.188.101:5000":
     auth:
       username: alice
       password: alicepw
     tls:
-      # rms serves plain HTTP here; TLS is terminated by the reverse proxy in
-      # front of the primary endpoint.
-      insecure_skip_verify: true
-
-  "192.168.188.101:5002":
-    tls:
+      # rms serves plain HTTP; TLS is terminated by the reverse proxy in front
+      # of the primary endpoint.
       insecure_skip_verify: true
 
 # ---------------------------------------------------------------------------
@@ -66,14 +77,19 @@ configs:
 #
 #   server = "https://registry-1.docker.io"
 #
-#   [host."http://192.168.188.101:5001"]
+#   [host."http://192.168.188.101:5000"]
 #     capabilities = ["pull", "resolve"]
 #     skip_verify = true
 #
-# `override_path = true` additionally lets the *primary* endpoint be used with a
-# path prefix, because it tells containerd to treat the whole path as the API
-# root:
+# `override_path = true` additionally lets the endpoint be used with a path
+# prefix, because it tells containerd to treat the whole path as the API root.
+# That is the only way to pin one upstream in the client, and it works for every
+# upstream, not just Docker Hub:
 #
-#   [host."http://192.168.188.101:5000/v2/docker.io"]
+#   # /etc/containerd/certs.d/ghcr.io/hosts.toml
+#   server = "https://ghcr.io"
+#
+#   [host."http://192.168.188.101:5000/v2/ghcr.io"]
 #     capabilities = ["pull", "resolve"]
 #     override_path = true
+#     skip_verify = true

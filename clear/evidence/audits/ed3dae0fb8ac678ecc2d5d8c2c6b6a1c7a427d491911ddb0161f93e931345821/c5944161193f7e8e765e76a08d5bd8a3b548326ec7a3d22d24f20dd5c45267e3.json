@@ -1,0 +1,301 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "d287de03-a575-4c14-ba7c-d4b19823ef39",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "交付态把 ghcr.io/gcr.io（及 quay.io、registry.k8s.io）的首选上游设为 daocloud 镜像，103 现场决策行里这两个 namespace 恒为 unreachable:upstream-status（reports/raw/103-final-live-10ns.txt:26-27，选中的镜像回 5xx），而配置里官方兜底存在（deploy/103/rms.yaml:95-101）却从未当选——该镜像对这些路径的探测失败没有任何可见的隔离或回退动作。报告 reports/103-selection-rollout.md:106 把现象当「诊断能力」写出，未登记为需复检的异常，也无知识条目记载；对真存于官方 ghcr/gcr 的镜像，本轮未做真实内容探测。",
+      "matters": "yes"
+    },
+    {
+      "what": "账本 negatives n-u-fl1myg / n-u-l29jwy 当初记的正是 docker.m.daocloud.io 因 token 绑客户端 IP、大 blob 302 到 R2 而不可用；本次 deploy/103/rms.yaml:95-124 仍把 daocloud 镜像设为 ghcr/gcr/quay/k8s 的首选、docker.io 的第二候选，103 现场随之出现 unreachable:upstream-status（reports/raw/103-final-live-10ns.txt:26-27）——该次「上游改序/增配」没有登记为需复检的异常，也没有在新拓扑下重验这些条目。",
+      "matters": "yes"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:93 称 reports/raw/103-selection-503-and-logs.txt「含…最近 6 条 selection 决策日志原文」：该文件 :13-19 确为 6 行，但全部 candidates=5，且其中 docker.io=7.466177s 一行与 reports/selection-verification.md:108 的区间出处口径（103-selection-rollout-live.txt 的 7.467/2.493/3.580s + 103-final-live.txt 的 6.581/4.020/2.699s）并存时仍无一句话说明这两组是同一时间的两次观测。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [],
+  "basis": "交付的代码与测试成立（我在副本重跑：make check EXIT=0、race 1.819s/6.272s 无竞争、e2e 顶层 11 RUN=10 PASS+1 SKIP、0 FAIL；探针 skew 与只认 2xx 的单测、严格解码报错原文都复现），但判据⑥要求的交付态证据在报告里对不上源文件：reports/selection-verification.md:71 声明第 75–82 行表\"逐字取自\"交付态抓取 reports/raw/103-final-live-10ns.txt（10 namespace、镜像 9d528ac26182），其中 5 行实为增配前 5 候选抓取 reports/raw/103-final-live.txt:7-9/19-21/27-29/35 或另一个仓库的日志行（10ns:26-27 的候选数是 10、404 耗时是 3.829/2.568/2.996s），且 :82 的\"五个 rms_namespace_up\"虽取自有出处的 103-rollout-baseline-checks.txt:25-29，却把交付态计数写成 5（10ns:8-17 是 10 条）。判据①—⑤经逐条核对全部满足；交付态抓取文件本身存在且承载了判据⑥要求的全部要素（端口 5000/9100、404 NAME_UNKNOWN、503 包络、10 候选探测耗时），但报告对它的引用不忠实，故不能判成立。另：账本投影 clear/goals/g-mv5eqq0n96w2.md:6-11 的 6 条判据与任务书判据列表内容不同，本裁决按任务书全文判。",
+  "shortfalls": [
+    {
+      "criterion": "⑥ 103 上重新部署并留下证据…写入 reports/103-selection-rollout.md",
+      "what": "reports/selection-verification.md:71 声明第四节表「逐字取自」交付态抓取 reports/raw/103-final-live-10ns.txt（10 namespace、镜像 9d528ac26182）。逐行核对该表 :75-82：404 耗时 6.580/4.020/2.699s 实为 reports/raw/103-final-live.txt:7-9（3.829/2.568/2.996s 才是 10ns:20-22）；决策日志 candidates=5（10ns:26-27 是 candidates=10）；已缓存镜像 1.060/1.122/1.049s 实为 103-final-live.txt:19-21（10ns:33 是 0.905194s）；带仓库名 blob 5.652s/4.6ms/5.3ms 实为 103-final-live.",
+      "missing": "把第四节表换成 10ns 交付态抓取的真实读数（或明确标注每行为增配前 5 候选），并对齐 :71 的「逐字取自交付态」声明"
+    },
+    {
+      "criterion": "⑥ 端口清单与 namespace_up 计数",
+      "what": "reports/103-selection-rollout.md:45 与 reports/selection-verification.md:82 写「五个 rms_namespace_up 全为 1」；其出处 reports/raw/103-rollout-baseline-checks.txt:25-29 确为 5 条（增配前），而交付态 reports/raw/103-final-live-10ns.txt:8-17 是 10 条全为 1（同文件 :6 记 proxy namespace 数: 10）。",
+      "missing": "按交付态把这两处改成 10 个 namespace 全为 1，并注明 5 条那一版属增配前"
+    },
+    {
+      "criterion": "⑥ 探测耗时出处",
+      "what": "reports/selection-verification.md:77 把 candidates=5 的三行日志标为「同请求的决策日志（完整行）」，但该段（reports/raw/103-final-live.txt:13-17）的 repo 是 library/definitely-not-here-rms，而表内请求是 :76 的 library/definitely-not-here-rms-final。",
+      "missing": "改引 10ns:26-27 中与请求同 repo 的 candidates=10 日志行，或说明那是另一个仓库的读数"
+    },
+    {
+      "criterion": "⑥ 证据文件口径（top-level 计数）",
+      "what": "reports/103-selection-rollout.md:79 写 e2e「顶层 10 PASS + 1 SKIP、RUN 行合计 29」；原始输出 reports/raw/selection-gate-race-e2e.txt 实为顶层 11 RUN（10 PASS + 1 SKIP，该文件同时含 TestReservePortsNeverRepeat）、RUN 行合计 29（我在副本重跑复现 11/29）。",
+      "missing": "把「顶层 10 PASS + 1 SKIP」改成「顶层 11 RUN = 10 PASS + 1 SKIP」，与 RUN 行合计 29 对齐"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 71
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 75
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 76
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 77
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 78
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 80
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 82
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 108
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 8
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 27
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 30
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 33
+    },
+    {
+      "path": "reports/raw/103-final-live-10ns.txt",
+      "line": 37
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 7
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 27
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 35
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 25
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 39
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 13
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 50
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 10
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 158
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 35
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 43
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 45
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 46
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 79
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 93
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 106
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 228
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 241
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 353
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 404
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 565
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 723
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 25
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 43
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 121
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 13
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 27
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 730
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 829
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 817
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 95
+    },
+    {
+      "path": "deploy/103/rms.yaml",
+      "line": 100
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 31
+    },
+    {
+      "path": "docker-compose.yml",
+      "line": 47
+    },
+    {
+      "path": "config/rms.yaml",
+      "line": 106
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 6
+    },
+    {
+      "path": "clear/ontology/verification-loop.md",
+      "line": 108
+    }
+  ],
+  "card": "交付的代码与测试成立（我在副本重跑：make check EXIT=0、race 1.819s/6.272s 无竞争、e2e 顶层 11 RUN=10 PASS+1 SKIP、0 FAIL；探针 skew 与只认 2xx 的单测、严格解码报错原文都复现），但判据⑥要求的交付态证据在报告里对不上源文件：reports/selection-verification.md:71 声明第 75–82 行表\"逐字取自\"交付态抓取 reports/raw/103-final-live-10ns.txt（10 namespace、镜像 9d528ac26182），其中 5 行实为增配前 5 候选抓取 reports/raw/103-final-live.txt:7-9/19-21/27-29/35 或另一个仓库的日志行（10ns:26-27 的候选数是 10、404 耗时是 3.829/2.568/2.996s），且 :82 的\"五个 rms_namespace_up\"虽取自有出处的 103-rollout-baseline-checks.txt:25-29，却把交付态计数写成 5（10ns:8-17 是 10 条）。判据①—⑤经逐条核对全部满足；交付态抓取文件本身存在且承载了判据⑥要求的全部要素（端口 5000/9100、404 NAME_UNKNOWN、503 包络、10 候选探测耗时），但报告对它的引用不忠实，故不能判成立。另：账本投影 clear/goals/g-mv5eqq0n96w2.md:6-11 的 6 条判据与任务书判据列表内容不同，本裁决按任务书全文判。",
+  "created_at": 1791863190256,
+  "evaluator": "independent"
+}

@@ -1,0 +1,172 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "59548c67-b38f-416f-b8b9-08c7b00e1392",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:57 把三格读数标为「proxy 组 native-absent 的 registry-1.docker.io」，但该组该候选三轮在原始数据里全是 401 @3074/3054/2632ms（reports/raw/selection-real-upstream.txt:158），而 ERR @10000ms / 401 @10000ms / 401 @9736ms 属 DIRECT 组（同文件 :196 节头、:199 行，.probe/selection/raw-direct.jsonl）。已登记的排除理由（audit:pending:a3c73f96…#u4「已改成逐格列出并注明行号」）站不住：行号对，组名错。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/raw/103-selection-rollout-live.txt:19 的 docker ps 原文含「5001-5002/tcp」，而自称逐字抄该文件的 reports/selection-verification.md:79 同一行只写 5000/9100（reports/103-selection-rollout.md:32 的上线后一列同样省略 5001-5002(EXPOSE)）。判据③只涉及 15000–15006，故不影响成立，但该「逐字」口径不严且未登记。",
+      "matters": "no"
+    },
+    {
+      "what": "x-h-nccqnt.json:20、:23 的 scope 仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」，而 audit:pending:7a3bec96…#u5 的排除理由称「已按系统的更正机制写入一份更正文档（Hindsight：Correction: 103 的端口拓扑与无限定请求语义已变）」——工作区里不存在该文档（对 Hindsight/Correction 的全库检索只命中记录这条 claim 的 n-audit-pending-7a3bec96…-u5.json:29），scope 过期在记录中并未更正。",
+      "matters": "unclear"
+    },
+    {
+      "what": "四条判断的 uses 全为空（clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32），而报告直接引用了 clear/knowledge 的 x-h-nccqnt / n-u-iiyp8u / n-u-s01do2（reports/selection-verification.md:63-65）——引用绕过了适用性判定，audit:pending:96b82650…#u5 的排除理由（「在报告侧补写说明」）没有解决 uses 本身为空。",
+      "matters": "unclear"
+    },
+    {
+      "what": "audit:pending:96b82650…#u3 与 audit:pending:1621fc72…#u2 的理由称三处耗时区间「现已统一为 2.6–5.2s」，实际现值为 2.49–7.47s 与 2.5–7.5s（reports/selection-verification.md:76、:82、:106；reports/103-selection-rollout.md:51、:86）。实质解释（同一路径抖动、非常量）我复跑认可，但理由里的数字已过期。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:52-57 的「决策日志原文」（五候选全 absent、docker.io=2.559738s 等）在本工作区没有落盘出处：103 原始抓取 reports/raw/103-selection-rollout-live.txt 无 decision log，reports/raw/selection-notes.md:137 记的是修复前那次 503 的 timings。判据⑥的「探测耗时」因此只有修复前那一次有原始出处。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "记录里确实发生过：ghcr/gcr 匿名 token 端点 403、quay 拿票后仍 401（reports/raw/selection-real-upstream.txt:100-108、:158 的 401），实现按 errAuthRefused 归 absent（internal/selection/probe.go:262-272、chooser.go:53-62），103 复验拼错镜像名回到 404（reports/103-selection-rollout.md:78-82）；-noaccept 对照证明这些 401 非内容协商假象（我复算翻转 6 格、library/alpine 全一致）。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我复跑逐格比对 proxy vs noaccept 得 6 格翻转，全部是 ghcr.io/gcr.io 原生仓库三轮 200→404，正是「探测不带 Accept 会把存在的镜像判成不存在」；报告与源文件均已按此更正（reports/raw/selection-real-upstream.txt:112-117），并有回归用例 TestDecideSendsTheManifestAcceptHeader 通过。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "e2e TestUnqualifiedBlobFollowsTheManifest 与 TestUnqualifiedBlobRetryKeepsTheRepositorySegment 在复跑中 PASS；代码里首次与重试共用 blobEnginePath/同一决定路径（internal/server/dispatch.go:317-339、:530-551），无仓库名时不猜仓库而 503。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "四象限有固定用例且复跑全绿：A 有 B 没有→命中 A（test/e2e/e2e_test.go:648-665）、两边都无该 tag→404 NAME_UNKNOWN（:695-703）、全不可达→503 UNAVAILABLE（:709-726）；单测 TestDecideMistypedImageSurvivesOneNamespaceDown 同向。报告把「无人答复才 503」记为裁决而非缺陷（reports/103-selection-rollout.md:80-81）。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "审计往返确实集中在读数转写：0.12ms vs 0.152ms、2 格 vs 6 格、EOF 归属错（96b82650…#u1、7a3bec96…#u2/#u3），机制从未被推翻；我用报告第八节脚本从 raw jsonl 复算，第二节表格数字逐个对上（0.152/0.405、3.53x、4.3/15.4s、50.164–50.960ms）。但同类错误仍复发（selection-verification.md:57 的组名标错），正说明该做法必要。"
+    }
+  ],
+  "basis": "判据①–⑤与⑥的其余各项都满足，且我在自建副本（任务书给的 /tmp/clearai-rerun-… 不存在——本环境 /tmp 每次调用即重置，故在 /tmp/rms-eval 复跑）独立复现：make check EXIT=0；race ok selection 1.655s / server 6.225s；e2e 顶层 10 用例 9 PASS+1 SKIP、18 子测试 0 FAIL；严格解码两条报错逐字复现；§二并发表从 raw jsonl 复算得 spread 0.152/0.405ms、3.53x、wall/serial 4.3/15.4s、offset 50.164–50.960ms（direct 0.145/0.479、3.80x、10.0/37.4、50.191–50.878），与报告逐字一致；proxy/noaccept 逐格比对复算翻转 6 格，与更正后的表述一致。唯一不满足的是判据⑥列举的「503 包络」：报告对该情形只指向 e2e 用例，103 的原始抓取里没有任何 503 观测，故交付不成立，缺口仅此一项。",
+  "shortfalls": [
+    {
+      "criterion": "⑥103 上重新部署并留下证据（端口清单、5000 拉取命中缓存、404 与 503 包络、selection 日志里的探测耗时）",
+      "what": "reports/103-selection-rollout.md:62 把 503 情形指向 e2e `TestUnqualifiedBlobWithUnknownDigestIsUnavailable`（非 103 读数）；103 原始抓取 reports/raw/103-selection-rollout-live.txt 全部 A–E 五节只有 200/404/401/端口/readyz，无任何 503；同文件 :77、:79 的 503 是修复前的缺陷症状，不是上线后证据",
+      "missing": "在 103 上实测一次 503 UNAVAILABLE 的状态行与响应 body（例如无仓库亲和时 /v2/blobs/<未知 digest>）并把原文落进 reports/103-selection-rollout.md"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 62
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 51
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 40
+    },
+    {
+      "path": "reports/raw/103-selection-rollout-live.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 13
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 57
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 79
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 158
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 262
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 380
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 709
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 459
+    },
+    {
+      "path": "internal/server/dispatch_test.go",
+      "line": 796
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    },
+    {
+      "path": "clear/knowledge/negatives/n-audit-pending-7a3bec96f13336e79b04ab38635f67ef-u5.json",
+      "line": 29
+    },
+    {
+      "path": "reports/raw/selection-notes.md",
+      "line": 137
+    },
+    {
+      "path": "clear/evidence/audits/3b96fc064fa874a80a132bda60bebf54efbc780a358fdcae4fbbd7e12b66b630/766566b48949996abf8cb8cb1cf61fb437826a7809d681939662d68201f9230c.json",
+      "line": 23
+    }
+  ],
+  "card": "判据①–⑤与⑥的其余各项都满足，且我在自建副本（任务书给的 /tmp/clearai-rerun-… 不存在——本环境 /tmp 每次调用即重置，故在 /tmp/rms-eval 复跑）独立复现：make check EXIT=0；race ok selection 1.655s / server 6.225s；e2e 顶层 10 用例 9 PASS+1 SKIP、18 子测试 0 FAIL；严格解码两条报错逐字复现；§二并发表从 raw jsonl 复算得 spread 0.152/0.405ms、3.53x、wall/serial 4.3/15.4s、offset 50.164–50.960ms（direct 0.145/0.479、3.80x、10.0/37.4、50.191–50.878），与报告逐字一致；proxy/noaccept 逐格比对复算翻转 6 格，与更正后的表述一致。唯一不满足的是判据⑥列举的「503 包络」：报告对该情形只指向 e2e 用例，103 的原始抓取里没有任何 503 观测，故交付不成立，缺口仅此一项。",
+  "created_at": 1791854858443,
+  "evaluator": "independent"
+}

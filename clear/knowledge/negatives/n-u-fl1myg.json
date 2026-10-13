@@ -1,0 +1,37 @@
+{
+  "id": "n-u-fl1myg",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "预期「走局域网代理对公共仓库更快」(旧 registry:2 栈的 reg-docker 就是走代理访问官方的);实测相反:daocloud 经代理直接 401 —— 它的 token 里绑了客户端 IP(实测 token 载荷含 \"ip\":\"183.34.222.14\"),经代理后源 IP 变了就不认;官方 Hub 经代理 90s 只传完 1.2MB/13.7KB/s。",
+  "touches": [
+    "up_registry_1_docker_io",
+    "mirror_cfg_clients"
+  ],
+  "evidence": [],
+  "about": [
+    "up_registry_1_docker_io",
+    "mirror_cfg_clients",
+    "host_103",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-fl1myg",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791814376383,
+  "updated": 1791814376383
+}

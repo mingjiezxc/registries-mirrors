@@ -1,0 +1,37 @@
+# 从 .probe/selection/raw-*.jsonl 复算的并发读数（本文件由该脚本生成，可重跑）
+# 复现：cd /root/dev/registries-mirrors && python3 - <<'PY' ... PY  见 reports/selection-verification.md 第八节
+
+## proxy（12 组）
+case                 round  spread_ms  wall_ms  serial_ms  ratio   start_offset_ms(逐候选)
+shared                   1      0.405     4362     15257  3.50x  docker.1ms.run=50.482 registry-1.docker.=50.368 ghcr.io=50.696 gcr.io=50.300 quay.io=50.486 registry.k8s.io=50.291
+shared-absent            1      0.094     5059     16938  3.35x  docker.1ms.run=50.241 registry-1.docker.=50.307 ghcr.io=50.324 gcr.io=50.241 quay.io=50.281 registry.k8s.io=50.230
+native                   1      0.212     5095     14286  2.80x  docker.1ms.run=50.337 registry-1.docker.=50.307 ghcr.io=50.292 gcr.io=50.241 quay.io=50.438 registry.k8s.io=50.226
+native-absent            1      0.149     3075     10952  3.56x  docker.1ms.run=50.340 registry-1.docker.=50.298 ghcr.io=50.385 gcr.io=50.275 quay.io=50.370 registry.k8s.io=50.236
+shared                   2      0.104     4284     12457  2.91x  docker.1ms.run=50.960 registry-1.docker.=50.927 ghcr.io=50.871 gcr.io=50.920 quay.io=50.906 registry.k8s.io=50.856
+shared-absent            2      0.185     4528     16593  3.66x  docker.1ms.run=50.268 registry-1.docker.=50.252 ghcr.io=50.365 gcr.io=50.403 quay.io=50.319 registry.k8s.io=50.218
+native                   2      0.205     4235     14035  3.31x  docker.1ms.run=50.186 registry-1.docker.=50.297 ghcr.io=50.369 gcr.io=50.248 quay.io=50.251 registry.k8s.io=50.164
+native-absent            2      0.103     3547     16600  4.68x  docker.1ms.run=50.401 registry-1.docker.=50.374 ghcr.io=50.316 gcr.io=50.372 quay.io=50.335 registry.k8s.io=50.298
+shared                   3      0.155     3448     15194  4.41x  docker.1ms.run=50.241 registry-1.docker.=50.221 ghcr.io=50.269 gcr.io=50.365 quay.io=50.263 registry.k8s.io=50.210
+shared-absent            3      0.073     4343     16006  3.69x  docker.1ms.run=50.229 registry-1.docker.=50.298 ghcr.io=50.292 gcr.io=50.273 quay.io=50.252 registry.k8s.io=50.225
+native                   3      0.221     4816     16735  3.47x  docker.1ms.run=50.266 registry-1.docker.=50.268 ghcr.io=50.395 gcr.io=50.197 quay.io=50.365 registry.k8s.io=50.174
+native-absent            3      0.115     3953     15452  3.91x  docker.1ms.run=50.278 registry-1.docker.=50.320 ghcr.io=50.240 gcr.io=50.342 quay.io=50.333 registry.k8s.io=50.227
+
+proxy: spread 中位 0.152ms 最大 0.405ms；压缩比中位 3.53x（2.80x–4.68x）；wall 中位 4.3s，serial 中位 15.4s
+
+## direct（12 组）
+case                 round  spread_ms  wall_ms  serial_ms  ratio   start_offset_ms(逐候选)
+shared                   1      0.479     9678     36457  3.77x  docker.1ms.run=50.878 registry-1.docker.=50.399 ghcr.io=50.564 gcr.io=50.412 quay.io=50.740 registry.k8s.io=50.520
+shared-absent            1      0.095    10001     38191  3.82x  docker.1ms.run=50.391 registry-1.docker.=50.360 ghcr.io=50.339 gcr.io=50.431 quay.io=50.420 registry.k8s.io=50.336
+native                   1      0.146     6945     27084  3.90x  docker.1ms.run=50.289 registry-1.docker.=50.252 ghcr.io=50.320 gcr.io=50.321 quay.io=50.376 registry.k8s.io=50.230
+native-absent            1      0.155    10000     36207  3.62x  docker.1ms.run=50.283 registry-1.docker.=50.232 ghcr.io=50.232 gcr.io=50.346 quay.io=50.312 registry.k8s.io=50.191
+shared                   2      0.130    10001     29990  3.00x  docker.1ms.run=50.376 registry-1.docker.=50.358 ghcr.io=50.402 gcr.io=50.380 quay.io=50.272 registry.k8s.io=50.328
+shared-absent            2      0.134    10001     37721  3.77x  docker.1ms.run=50.308 registry-1.docker.=50.379 ghcr.io=50.316 gcr.io=50.257 quay.io=50.300 registry.k8s.io=50.245
+native                   2      0.201    10001     38854  3.88x  docker.1ms.run=50.244 registry-1.docker.=50.237 ghcr.io=50.277 gcr.io=50.350 quay.io=50.396 registry.k8s.io=50.195
+native-absent            2      0.180    10000     42471  4.25x  docker.1ms.run=50.318 registry-1.docker.=50.309 ghcr.io=50.380 gcr.io=50.451 quay.io=50.374 registry.k8s.io=50.271
+shared                   3      0.086    10001     37098  3.71x  docker.1ms.run=50.242 registry-1.docker.=50.211 ghcr.io=50.256 gcr.io=50.286 quay.io=50.226 registry.k8s.io=50.200
+shared-absent            3      0.209    10001     40205  4.02x  docker.1ms.run=50.283 registry-1.docker.=50.266 ghcr.io=50.360 gcr.io=50.433 quay.io=50.370 registry.k8s.io=50.224
+native                   3      0.116    10001     38689  3.87x  docker.1ms.run=50.389 registry-1.docker.=50.347 ghcr.io=50.401 gcr.io=50.362 quay.io=50.290 registry.k8s.io=50.285
+native-absent            3      0.145     9737     32905  3.38x  docker.1ms.run=50.437 registry-1.docker.=50.367 ghcr.io=50.367 gcr.io=50.309 quay.io=50.413 registry.k8s.io=50.292
+
+direct: spread 中位 0.145ms 最大 0.479ms；压缩比中位 3.80x（3.00x–4.25x）；wall 中位 10.0s，serial 中位 37.4s
+

@@ -1,0 +1,10 @@
+{
+  "basis": "docker compose 项目 /opt/stacks/rms,监听 5000/15000-15006/9100",
+  "id": "svc_rms_103",
+  "label": "103 上的 rms 实例",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/docker-compose.yml"
+  },
+  "type": "service"
+}

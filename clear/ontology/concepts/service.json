@@ -1,0 +1,6 @@
+{
+  "gloss": "被部署的服务进程实例(rms、registry:2 等)。",
+  "id": "service",
+  "kind": "category",
+  "label": "服务"
+}

@@ -1,0 +1,222 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "292a051a-d67f-45d4-9517-a9bda93a2bb7",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/103-selection-rollout.md:50（:61 同）引用一条「完整行」affinity 决策日志并注明出自 reports/raw/103-child-manifest-and-blob.txt 第 4 节；该节只有两条 kind=\"blob\"/source=\"decision-cache\"、repo=library/busybox、time=02:13:05 的行，被引的 {time 01:43:55…, repo library/alpine, source affinity} 在全工作区 grep 只命中这一句自身。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:52-57 的决策日志节选（源自 reports/raw/103-selection-503-and-logs.txt:17-19）缺 \\\"kind\\\" 字段，而现役镜像 062d62246c1b 的 manifest 决策日志带 \\\"kind\\\":\\\"manifest\\\"（我在 103 上实取到的同类行都有）；即该抓取来自更早一次构建，报告未注明。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:75 记 e2e 为「顶层 9 PASS + 1 SKIP、RUN 行合计 28」；我复跑同一命令得顶层 11 个 RUN（10 PASS + 1 SKIP）、29 个 RUN 行——多出的 test/e2e/e2e_test.go:531 TestReservePortsNeverRepeat 的文件 mtime(10:18) 晚于所引抓取(09:06)，报告未更新口径。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/selection-verification.md:100 称 grep 命中在 deploy/103/README.md「第 9–15、40、51、104 行」；我跑同一条 grep 的实际命中是 9–15、45、56、109、173、178 行（40/51/104 无命中）。范围结论（只命中 README 迁移说明）仍成立，行号不符且未登记。",
+      "matters": "no"
+    },
+    {
+      "what": "未解释项 u-i6k3wz 的排除理由写「24 格里只有 ghcr.io/gcr.io 的原生仓库那 2 格翻转」；我对 .probe/selection/raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算得 6 格翻转（native 组 ghcr.io、gcr.io × 各 3 轮，均 200→404）。结论（401 是认证判决）站得住，数字不对且账本未更正。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/selection-verification.md:66-69 与 clear/knowledge/negatives/n-audit-pending-7be7583f2707ce8045841cf71405b5db-u1.json:32 称已写入两份「Correction」更正文档；全库 grep 只命中记载该 claim 的报告段落与审计/负面条目本身，报告也自述它们不在工作区，因此该排除理由在工作区内不可核对（所引三条 negatives 的 scope 仍为旧拓扑，clear/goals/g-mv5eqq0n96w2.md:17 判 out_of_scope）。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "internal/selection/chooser.go:40-70 按「拒绝类=明确不存在／5xx·429·传输失败=没能答复」分类，reports/raw/selection-notes.md 第五节三分类表与 reports/103-selection-rollout.md:106 的「无人答复才 503」一致；我在 103 复跑拼错镜像名得 404 NAME_UNKNOWN，决策日志五个候选全 absent 无 unreachable。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我对 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算得 6 格 200→404（ghcr.io/gcr.io native 各 3 轮）；reports/raw/selection-real-upstream.txt:112 已按此更正；回归用例 TestDecideSendsTheManifestAcceptHeader(OnTheGetFallback) 在复跑中 PASS。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "internal/selection/chooser.go 的 DecideBlobInRepo 走 /v2/<repo>/blobs/<digest>，用例 TestDecideBlobInRepoAsksTheBlobPath 与 TestBlobAndManifestDecisionsDoNotShareACacheKey 在复跑中通过；reports/raw/103-child-manifest-and-blob.txt:22-28 显示修复后该路径 200。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "internal/server/dispatch.go:422-437 只在 ErrUnreachable 时回 503；用例 TestAFailingCandidateStillLosesToAnAnswer、TestDecideMistypedImageSurvivesOneNamespaceDown、TestServerErrorsAreNotAbsence 复跑通过；103 现场拼错镜像名（五候选全 absent）得 404。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "reports/103-selection-rollout.md:87 记 103 自身 dockerd 仍指已下线端口导致本地 build 失败；reports/raw/103-dockerd-mirror-migration.txt:1-6 记迁移后 mirrors=['http://127.0.0.1:5000']，我在 103 上实读 /etc/docker/daemon.json 一致，且备份 daemon.json.bak-20261013-021532 存在。"
+    }
+  ],
+  "basis": "六条判据逐条满足，观测可复跑。在副本 /tmp/clearai-rerun-d40a2b4bb2563a4b4d80aa0a653ab251fece23632965a6334d3e40b1b059a5dd 复跑：make check EXIT=0；go test -race -count=1 ./internal/selection/ ok；go test -tags e2e -count=1 ./test/e2e/... PASS（10 PASS+1 SKIP、0 FAIL，含「A 有 B 没有→命中 A」「缺 tag→404 NAME_UNKNOWN」「全不可达→503 UNAVAILABLE」三条用例）；config validate 严格解码复现 field default not found in type config.Namespaces 与 field listeners not found in type config.Config。并发读数按报告第八节脚本对 .probe/selection/raw-*.jsonl 复算，与 reports/raw/selection-concurrency-stats.txt 逐位一致（proxy spread 中位 0.152ms/最大 0.405ms、压缩比中位 3.53x(2.80–4.68)、start_offset 50.164–50.960；direct 0.145/0.479、3.80x(3.00–4.25)、50.191–50.878）；raw-proxy 与 raw-noaccept 逐格比对得 6 格 200→404。判据⑥在 103 只读复验：rms 容器(image 062d62246c1b)只发布 5000/9100，:5000/v2/→401，已缓存 alpine→200，拼错镜像名→404 NAME_UNKNOWN(t=4.40s)，/v2/blobs/uploads/abc-123→503 UNAVAILABLE 包络逐字一致，selection 决策日志含逐候选耗时，15000/15003/15006 refused，在线配置含 selection(probe_ttl 30s/probe_timeout 10s) 且无 default/listeners。仓库内 15000–15006 只剩 README 迁移说明与注释，无端口映射。未发现判据缺口；6 处转写/口径瑕疵见 anomalies，均不动摇六条判据。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 26
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 13
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 163
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 13
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 330
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 341
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 40
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 57
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 487
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 526
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 906
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1181
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 1284
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 422
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 499
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 808
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "deploy/103/docker-compose.yml",
+      "line": 31
+    },
+    {
+      "path": "docker-compose.yml",
+      "line": 47
+    },
+    {
+      "path": ".env.example",
+      "line": 20
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 41
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 44
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 52
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 31
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 9
+    },
+    {
+      "path": "reports/raw/103-selection-503-and-logs.txt",
+      "line": 17
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 48
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 100
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 158
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 199
+    },
+    {
+      "path": "/tmp/clearai-rerun-d40a2b4bb2563a4b4d80aa0a653ab251fece23632965a6334d3e40b1b059a5dd/.probe/selection/raw-proxy.jsonl",
+      "line": 1
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    }
+  ],
+  "card": "六条判据逐条满足，观测可复跑。在副本 /tmp/clearai-rerun-d40a2b4bb2563a4b4d80aa0a653ab251fece23632965a6334d3e40b1b059a5dd 复跑：make check EXIT=0；go test -race -count=1 ./internal/selection/ ok；go test -tags e2e -count=1 ./test/e2e/... PASS（10 PASS+1 SKIP、0 FAIL，含「A 有 B 没有→命中 A」「缺 tag→404 NAME_UNKNOWN」「全不可达→503 UNAVAILABLE」三条用例）；config validate 严格解码复现 field default not found in type config.Namespaces 与 field listeners not found in type config.Config。并发读数按报告第八节脚本对 .probe/selection/raw-*.jsonl 复算，与 reports/raw/selection-concurrency-stats.txt 逐位一致（proxy spread 中位 0.152ms/最大 0.405ms、压缩比中位 3.53x(2.80–4.68)、start_offset 50.164–50.960；direct 0.145/0.479、3.80x(3.00–4.25)、50.191–50.878）；raw-proxy 与 raw-noaccept 逐格比对得 6 格 200→404。判据⑥在 103 只读复验：rms 容器(image 062d62246c1b)只发布 5000/9100，:5000/v2/→401，已缓存 alpine→200，拼错镜像名→404 NAME_UNKNOWN(t=4.40s)，/v2/blobs/uploads/abc-123→503 UNAVAILABLE 包络逐字一致，selection 决策日志含逐候选耗时，15000/15003/15006 refused，在线配置含 selection(probe_ttl 30s/probe_timeout 10s) 且无 default/listeners。仓库内 15000–15006 只剩 README 迁移说明与注释，无端口映射。未发现判据缺口；6 处转写/口径瑕疵见 anomalies，均不动摇六条判据。",
+  "created_at": 1791858232677,
+  "evaluator": "independent"
+}

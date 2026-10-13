@@ -1,0 +1,6 @@
+{
+  "gloss": "被 namespace 代理的上游 registry 端点(如 https://registry-1.docker.io)。",
+  "id": "upstream",
+  "kind": "category",
+  "label": "上游端点"
+}

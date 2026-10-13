@@ -1,0 +1,8 @@
+{
+  "domain": "selection_probe_ttl",
+  "id": "r_ttl_governs_decision",
+  "kind": "affects",
+  "label": "TTL 决定决策复用窗口",
+  "range": "selection_decision",
+  "shape": "coupled"
+}

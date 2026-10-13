@@ -1,0 +1,199 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "a2958518-22a7-43d5-becf-37464d3dbf18",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "inconclusive",
+      "basis": "它记的机制(/v2/ 401 挑战不逼 dockerd 离开镜像源)我在 103 现场仍实测到(:5000/v2/ 401、101 经 103:5000 拉取成功),但 scope 写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」,正是本次删掉的拓扑(clear/knowledge/negatives/x-h-nccqnt.json:20),账本因此判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17/:27/:32);结论不依赖它。"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "inconclusive",
+      "basis": "它记的「103 直连 registry-1.docker.io 间歇 connection reset」与本次 direct 组的 ERR/超时读数同向(reports/raw/selection-real-upstream.txt:199、:407),但 scope 同样写已删除的端口拓扑,账本判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17);无法据它判本次适用。"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "inconclusive",
+      "basis": "它记的「只看 /v2/ 探活会漏掉探活正常、取内容失败」正是本次改用仓库级探测的针对对象,机制成立;但 scope 写「端口 5000/15000-15006/9100」,账本判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17/:32),本次结论以本轮读数为准。"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "inconclusive",
+      "basis": "它只被登记为 h-0afup5 的 uses 并判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:22),报告正文未引用;它讲上游带宽/并发争用导致层下载变慢,与本次并发探测墙钟(start_offset/spread)不是同一坐标,凭记录判不了适用。"
+    }
+  ],
+  "holds": "yes",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "报告把 race 耗时署名给 raw 文件,但 raw 里没有这个数:reports/selection-verification.md:99 与 reports/103-selection-rollout.md:75 写 `1.643s / 6.105s`「取自 reports/raw/selection-gate-race-e2e.txt」,该文件 :3-4 实为 `1.783s / 6.306s`;全库(含副本)grep `1.643`/`6.105` 只命中这两行报告,其余是二进制。race 结论本身我复跑为 ok 1.784s,故不动摇判据。",
+      "matters": "no"
+    },
+    {
+      "what": "报告称已按系统更正机制写入两份 Hindsight Correction 文档(reports/selection-verification.md:65-69,doc_id 由 hindsight_ingest_document 返回),同一 claim 也是 n-audit-pending-7be7583f2707ce8045841cf71405b5db-u1.json:32 等排除理由的依据。我查 103:18888:GET /v1/default/banks 里 bank `coding-agent::registries-mirrors` fact_count=0、last_write_at=null,/documents 与 /memories/list 均 total=0 —— 该 bank 从未写入,这两份更正文档不存在;x-h-nccqnt.json:20/:23 的旧 s",
+      "matters": "unclear"
+    },
+    {
+      "what": "翻转观测的分母在报告与它引用的源文件之间对不上:reports/selection-verification.md:60 写「144 个观测里有 6 格翻转」,源 reports/raw/selection-real-upstream.txt:112 写「3 目标 × 6 候选 × 3 轮 × 2 遍 = 108 个观测」(同文件 :28 又写 144 次探测)。我按 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算:每遍 72 格、两遍 144 观测、翻转 6 格 —— 报告的数对、源文件的 108 错;此前 audit 0f17c293#u2 的排除理由称源文件「已是同一说法」不成立。",
+      "matters": "no"
+    },
+    {
+      "what": "未命中缓存的耗时区间口径仍不统一:reports/103-selection-rollout.md:112 与 reports/selection-verification.md:115 写「5 次独立测量 2.5–7.5s」,同一份报告 :52 列的是 6 次(reports/raw/103-selection-rollout-live.txt 的 7.467/2.493/3.580s + reports/raw/103-final-live.txt 的 6.581/4.020/2.699s,合并区间 2.49–7.47s)。数字都落在同一量级,故不动摇判据。",
+      "matters": "no"
+    },
+    {
+      "what": "四条判断的 uses 全被账本判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17/:22/:27/:32,根源是 x-h-nccqnt 等条目的 scope 仍写「端口 5000/15000-15006/9100」),而 reports/selection-verification.md:72-74 仍把它们写成「与已有条目的关系」的依据 —— 引用绕过了适用性判定;作者在答案「尚未确定」里承认此项,本次结论也确实不依赖它们。",
+      "matters": "no"
+    },
+    {
+      "what": "账本坐标里 refute/inconclusive 的 evidence 内容不可读,且只登记了一条:e-gqu8jh(refute)在全库只出现在以往审计卡的异常文字里,e-vjvdf4(refute)与 e-d23908(inconclusive)在仓库与副本中零命中;因此无人能说明它们推翻/存疑的是哪条观测。已登记的只有 e-gqu8jh(交给人)。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "记录里确有其事:不存在仓库在 Docker Hub 回 401、ghcr/gcr 的匿名 token 端点回 403(reports/raw/selection-real-upstream.txt:158、:132、:396),据此把「认证走完的拒绝」算 absent 后,103 拼错镜像从 503 变 404(reports/103-selection-rollout.md:103-104);我现场实取也是 404。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "带/不带 Accept 的背靠背两遍在 ghcr.io、gcr.io 原生仓库上翻转 6 格 200→404(reports/raw/selection-real-upstream.txt:112,我按 raw-proxy/raw-noaccept.jsonl 逐格复算=6),假上游原文见 reports/raw/selection-notes.md:25;103 上不带 Accept 的子 manifest 同样 404(reports/raw/103-child-manifest-and-blob.txt:12)。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "e2e 原文 `got 404, want 200 (404 page not found)`(reports/raw/config-docs-notes.md:231)与 103 真机修复前 `GET /v2/library/busybox/blobs/… → 404`、日志显示在探 manifests 路径(reports/raw/101-real-client-and-blob-fix.txt:17)都在记录里;代码已分 DecideBlobInRepo 走 /v2/<repo>/blobs/<digest>(internal/selection/probe.go:145)。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "口径裁决与四象限用例都在:reports/103-selection-rollout.md:105-108(改「无人答复才 503」后 103 复验为 404)与单测 internal/selection/chooser_test.go:951(一个 500 + 一个明确 404 → 仍 404);交付内确有该症状再次出现的现场记录。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "记录里两台宿主(101 与 103 自身 dockerd)都仍把 registry-mirrors 指向已下线的 15000–15006,103 因此在本地 build 时失败(reports/raw/101-real-client-and-blob-fix.txt:41、reports/raw/103-dockerd-mirror-migration.txt:1-8,rollout md:87);失败是显式 connection refused 而非静默,但「先列客户端再下线、逐台改指」这条做法被证实,至今仍有 102 等宿主未迁(rollout md:12)。"
+    }
+  ],
+  "basis": "六条判据逐条满足,核心观测我在副本与 103 现场都独立复现。①selection 用 HEAD 探测 /v2/&lt;repo&gt;/manifests/&lt;ref&gt;(probe.go:330)、只把 2xx 记「存在」(:341)、按实测耗时取最快(:582)、按 probe_ttl 缓存(:643),单测覆盖并发(3µs,阈值 50ms)/只认成功/token 重试/TTL/ErrNotFound 与 ErrUnreachable 两种语义。②配置结构体已无 namespaces.default 与 listeners(严格解码实测报 `field default not found in type config.Namespaces`、`field listeners not found`),新增 namespaces.selection,app/server/cmd 全接线,dispatcher 全 404→NAME_UNKNOWN、全不可达→UNAVAILABLE,GET/HEAD 最多重选一次。③全仓 grep 15000–15006 只命中 deploy/103/README.md 的迁移说明,无端口映射;103 在线配置与 .env 也只有 5000/9100。④e2e 三条新用例(A 有 B 无→命中 A、都没有→404 NAME_UNKNOWN、全不可达→503 UNAVAILABLE)存在且通过。⑤我在副本复跑 make check(EXIT=0)、race(ok 1.784s)、e2e(11 顶层 RUN=10 PASS+1 SKIP、29 RUN 行、0 FAIL)。⑥我在 103 只读实取:现役镜像 062d62246c1b、发布端口仅 5000/9100、:5000/v2/ 401、:15000 refused、拼错镜像 404(4.0s)、blobs/uploads 503 包络逐字一致、缓存镜像两次 200/8077 字节、决策日志含逐候选耗时。异常不动摇判据:报告署名给 raw 的 1.643s/6.105s 实为 1.783s/6.306s;称已写入的两份 Hindsight Correction 文档在该 bank 不存在。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "internal/selection/probe.go",
+      "line": 330
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 341
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 374
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 562
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 643
+    },
+    {
+      "path": "internal/config/selection.go",
+      "line": 13
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "line": 96
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 424
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 429
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 499
+    },
+    {
+      "path": "internal/app/app.go",
+      "line": 97
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 811
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 23
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 7
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 14
+    },
+    {
+      "path": "reports/raw/103-rollout-baseline-checks.txt",
+      "line": 8
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 99
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 3
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 65
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 112
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 52
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    }
+  ],
+  "card": "六条判据逐条满足,核心观测我在副本与 103 现场都独立复现。①selection 用 HEAD 探测 /v2/&lt;repo&gt;/manifests/&lt;ref&gt;(probe.go:330)、只把 2xx 记「存在」(:341)、按实测耗时取最快(:582)、按 probe_ttl 缓存(:643),单测覆盖并发(3µs,阈值 50ms)/只认成功/token 重试/TTL/ErrNotFound 与 ErrUnreachable 两种语义。②配置结构体已无 namespaces.default 与 listeners(严格解码实测报 `field default not found in type config.Namespaces`、`field listeners not found`),新增 namespaces.selection,app/server/cmd 全接线,dispatcher 全 404→NAME_UNKNOWN、全不可达→UNAVAILABLE,GET/HEAD 最多重选一次。③全仓 grep 15000–15006 只命中 deploy/103/README.md 的迁移说明,无端口映射;103 在线配置与 .env 也只有 5000/9100。④e2e 三条新用例(A 有 B 无→命中 A、都没有→404 NAME_UNKNOWN、全不可达→503 UNAVAILABLE)存在且通过。⑤我在副本复跑 make check(EXIT=0)、race(ok 1.784s)、e2e(11 顶层 RUN=10 PASS+1 SKIP、29 RUN 行、0 FAIL)。⑥我在 103 只读实取:现役镜像 062d62246c1b、发布端口仅 5000/9100、:5000/v2/ 401、:15000 refused、拼错镜像 404(4.0s)、blobs/uploads 503 包络逐字一致、缓存镜像两次 200/8077 字节、决策日志含逐候选耗时。异常不动摇判据:报告署名给 raw 的 1.643s/6.105s 实为 1.783s/6.306s;称已写入的两份 Hindsight Correction 文档在该 bank 不存在。",
+  "created_at": 1791859686014,
+  "evaluator": "independent"
+}

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/watsons/rms/internal/auth"
-	"github.com/watsons/rms/internal/config"
 	"github.com/watsons/rms/internal/namespace"
 	"github.com/watsons/rms/internal/registry"
 )
@@ -17,36 +16,42 @@ import (
 // ErrNoListeners is returned when no listener could be bound.
 var ErrNoListeners = errors.New("no listener could be bound")
 
-// bound pairs a listener with the HTTP server serving it.
+// bound pairs a listening socket with the HTTP server serving it.
 type bound struct {
 	ln  net.Listener
 	srv *http.Server
-	cfg config.Listener
+	// label names the socket in logs, errors and startup output: the registry
+	// address for the primary listener, "<metrics>" for the metrics socket.
+	label string
 }
 
-// Listen binds every configured listener without serving, so a port conflict or
-// an unusable bind address is reported before the process starts serving.
+// Listen binds the registry listener and, when configured, the metrics
+// listener, without serving: a port conflict or an unusable bind address is
+// reported before the process starts serving.
 //
-// The metrics listener is separate from the registry listeners on purpose:
+// The metrics listener is separate from the registry listener on purpose:
 // scraping endpoints and pprof must not be exposed on the port that serves
 // images.
+//
+// There is exactly one registry listener. Namespaces are carried by the request
+// path, and unqualified requests are decided by the selector, so the extra
+// per-namespace sockets are gone.
 func (s *Server) Listen() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var errs []error
-	for _, l := range s.cfg.EffectiveListeners() {
-		ln, err := net.Listen("tcp", l.Listen)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("listen %s: %w", l.Listen, err))
-			continue
-		}
 
+	addr := s.cfg.Server.Listen
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listen %s: %w", addr, err))
+	} else {
 		s.bound = append(s.bound, bound{
-			ln:  ln,
-			cfg: l,
+			ln:    ln,
+			label: addr,
 			srv: &http.Server{
-				Handler:           s.Handler(l.Namespace),
+				Handler:           s.Handler(""),
 				ReadHeaderTimeout: 30 * time.Second,
 				// ReadTimeout and WriteTimeout default to zero because a layer
 				// push can outlive any sane fixed timeout.
@@ -56,29 +61,25 @@ func (s *Server) Listen() error {
 			},
 		})
 
-		s.log.Info("listening",
-			"addr", ln.Addr().String(),
-			"namespace", describeListenerNamespace(l.Namespace),
-			"external_url", l.ExternalURL,
-		)
+		s.log.Info("listening", "addr", ln.Addr().String(), "purpose", "registry")
 	}
 
 	if s.metricsHandler() != nil && s.cfg.Observability.Metrics.Listen != "" {
-		addr := s.cfg.Observability.Metrics.Listen
-		ln, err := net.Listen("tcp", addr)
+		maddr := s.cfg.Observability.Metrics.Listen
+		mln, err := net.Listen("tcp", maddr)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("listen %s (metrics): %w", addr, err))
+			errs = append(errs, fmt.Errorf("listen %s (metrics): %w", maddr, err))
 		} else {
 			s.bound = append(s.bound, bound{
-				ln:  ln,
-				cfg: config.Listener{Listen: addr},
+				ln:    mln,
+				label: metricsLabel,
 				srv: &http.Server{
 					Handler:           s.metricsHandler(),
 					ReadHeaderTimeout: 10 * time.Second,
 					IdleTimeout:       time.Minute,
 				},
 			})
-			s.log.Info("listening", "addr", ln.Addr().String(), "purpose", "metrics")
+			s.log.Info("listening", "addr", mln.Addr().String(), "purpose", "metrics")
 		}
 	}
 
@@ -90,6 +91,9 @@ func (s *Server) Listen() error {
 	}
 	return errors.Join(errs...)
 }
+
+// metricsLabel names the metrics socket.
+const metricsLabel = "<metrics>"
 
 // metricsHandler builds the dedicated metrics/pprof listener handler.
 //
@@ -142,7 +146,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		go func(b bound) {
 			err := b.srv.Serve(b.ln)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				errCh <- fmt.Errorf("serve %s: %w", b.cfg.Listen, err)
+				errCh <- fmt.Errorf("serve %s: %w", b.label, err)
 				return
 			}
 			errCh <- nil
@@ -174,20 +178,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	var errs []error
 	for _, b := range bs {
 		if err := b.srv.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("shutdown %s: %w", b.cfg.Listen, err))
+			errs = append(errs, fmt.Errorf("shutdown %s: %w", b.label, err))
 		}
 	}
 	if err := s.mgr.Shutdown(); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
-}
-
-func describeListenerNamespace(ns string) string {
-	if ns == "" {
-		return "<multi-namespace>"
-	}
-	return ns
 }
 
 // Auth returns the authenticator so callers can report or reload it.

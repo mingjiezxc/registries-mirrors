@@ -1,0 +1,74 @@
+fake mirror stale on 15101 (delay 5ms)
+fake mirror same on 15102 (delay 25ms)
+fake mirror same on 15103 (delay 20ms)
+fake mirror authority on 15104 (delay 50ms)
+date: 2026-10-13T18:44:32+08:00
+host: ubuntu22 192.168.188.101
+rms rms dev (commit none), workdir /root/dev/registries-mirrors/.probe/live
+
+=== A. pull anonymous, only push to a local namespace needs credentials ===
+anonymous GET /v2/ (challenge must stay)                                 -> HTTP/1.1 401 Unauthorized
+anonymous GET /v2/me/app/manifests/latest (local read)                   -> 401
+anonymous POST /v2/me/app/blobs/uploads/ (local write)                   -> 401
+me:mepw POST /v2/me/app/blobs/uploads/                                   -> 202
+alice:alicepw POST /v2/me/app/blobs/uploads/ (someone else's namespace)  -> 403
+me:mepw POST /v2/docker.io/library/app/blobs/uploads/ (proxy namespace is read-only) -> 403
+anonymous POST /v2/shared/app/blobs/uploads/ (shared still needs a login) -> 401
+alice:alicepw POST /v2/shared/app/blobs/uploads/                         -> 202
+
+=== B. digest authority: the stale (faster) mirror must never be served ===
+  candidate library/busybox:1.36.1 from 103 -> 200
+anonymous GET /v2/library/busybox/manifests/1.36.1 (unqualified, raced)  -> {"annotations": {"org.rms.acceptance.marker": "authority"}, ...
+marker of the served manifest                                            -> authority (want authority: the config-first mirror)
+authority.log content fetches                                            -> 3
+stale.log content fetches                                                -> 1
+
+=== B2. what the fake mirror saw (probe only, no content fetch) ===
+  stale.log: 2 request(s)
+    GET /v2/
+    HEAD /v2/library/busybox/manifests/1.36.1
+
+=== B3. decision line (winner + per-upstream timings) ===
+"msg":"selection","repo":"library/busybox","ref":"1.36.1","kind":"manifest","winner":"docker.io","upstream":"http://127.0.0.1:15104","candidates":5,"source":"probe","cached":false,"timings":["docker.io/127.0.0.1:15104=51.03ms","docker.io/192.168.188.103:5000=1.137282s","docker.io/127.0.0.1:15101=6.522ms","example.test/127.0.0.1:15102=26.239ms(absent)","example.test/127.0.0.1:15103=21.423ms(absent)"]}
+
+=== B4. digest-mismatch counters (the real mirror on 103 disagrees with the authority too) ===
+rms_upstream_digest_mismatch_total{namespace="docker.io",upstream="http://127.0.0.1:15101"} 1
+rms_upstream_digest_mismatch_total{namespace="docker.io",upstream="http://192.168.188.103:5000"} 1
+
+=== C. two mirrors that agree on the digest: fastest serves, then both share ===
+anonymous GET /v2/app/manifests/latest (only example.test has it)        -> 200
+  first request's upstream fetches: slow(25ms)=2 fast(20ms)=4
+  upstream fetches after 13 pulls: slow(25ms)=7 fast(20ms)=11
+
+=== C2. served-by counters (the distribution itself) ===
+  rms_upstream_wins_total{namespace="docker.io",upstream="http://127.0.0.1:15104"} 1
+  rms_upstream_wins_total{namespace="example.test",upstream="http://127.0.0.1:15102"} 5
+  rms_upstream_wins_total{namespace="example.test",upstream="http://127.0.0.1:15103"} 8
+
+=== C3. probe durations ===
+  rms_upstream_probe_duration_seconds_sum{namespace="docker.io",upstream="http://127.0.0.1:15101"} 0.012329660999999999
+  rms_upstream_probe_duration_seconds_count{namespace="docker.io",upstream="http://127.0.0.1:15101"} 2
+  rms_upstream_probe_duration_seconds_sum{namespace="docker.io",upstream="http://127.0.0.1:15104"} 0.10189141500000001
+  rms_upstream_probe_duration_seconds_count{namespace="docker.io",upstream="http://127.0.0.1:15104"} 2
+  rms_upstream_probe_duration_seconds_sum{namespace="docker.io",upstream="http://192.168.188.103:5000"} 4.731834714
+  rms_upstream_probe_duration_seconds_count{namespace="docker.io",upstream="http://192.168.188.103:5000"} 2
+  rms_upstream_probe_duration_seconds_sum{namespace="example.test",upstream="http://127.0.0.1:15102"} 0.052161384000000005
+  rms_upstream_probe_duration_seconds_count{namespace="example.test",upstream="http://127.0.0.1:15102"} 2
+  rms_upstream_probe_duration_seconds_sum{namespace="example.test",upstream="http://127.0.0.1:15103"} 0.042456212
+  rms_upstream_probe_duration_seconds_count{namespace="example.test",upstream="http://127.0.0.1:15103"} 2
+
+=== C4. decision sources ===
+  rms_selection_decisions_total{source="decision-cache"} 12
+  rms_selection_decisions_total{source="probe"} 2
+
+=== E. chaining to an auth-enabled upstream (why the credentials above are needed) ===
+HEAD <upstream> with no credentials (what the selection probe sends)     -> 200
+HEAD <upstream> with an EMPTY Basic pair (what distribution's proxy attaches) -> 401
+HEAD <upstream> with a wrong pair (refused, never treated as anonymous)  -> 401
+  -> chaining to this upstream needs its real credentials in username/password;
+     without them the probe (anonymous) says 'present' while the engine's fetch
+     gets 401 and the tag lookup falls back to an empty local cache (404).
+
+=== D. startup posture lines ===
+  {"time":"2026-10-13T18:44:32.369636204+08:00","level":"INFO","msg":"outbound transport configured","detail":"proxy: none (no_proxy=\"127.0.0.1,localhost,192.168.188.103\")","ca_roots":122}
+  {"time":"2026-10-13T18:44:32.532167552+08:00","level":"INFO","msg":"namespaces configured","local":"admin,alice,me,shared","proxy":"docker.io,example.test","proxy_candidates":2,"selection_probe_ttl":"30s","selection_probe_timeout":"15s","selection_decision_deadline":"5s","selection_balance":"weighted","selection_balance_window":1.5,"upstream_race":"docker.io,example.test","upstream_ordered":"","storage_root":"/root/dev/registries-mirrors/.probe/live/data","auth":"htpasswd"}

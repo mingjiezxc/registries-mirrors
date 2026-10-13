@@ -1,0 +1,10 @@
+{
+  "basis": "旧栈 15003 端口,接管后由 rms 的 gcr.io 监听器顶替",
+  "id": "pb_15003",
+  "label": "15003 端口绑定(gcr.io)",
+  "provenance": {
+    "kind": "named",
+    "ref": "deploy/103/rms.yaml listeners"
+  },
+  "type": "ns_port_binding"
+}

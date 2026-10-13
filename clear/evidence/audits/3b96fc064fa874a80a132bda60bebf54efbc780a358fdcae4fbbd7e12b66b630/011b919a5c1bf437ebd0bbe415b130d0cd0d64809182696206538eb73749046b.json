@@ -1,0 +1,260 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "evidence_audit",
+  "step_id": "s5",
+  "auditor_run_id": "3746d4b3-ee8e-4f56-8c6f-40eeab6339f2",
+  "rechecks": [
+    {
+      "fact": "reports/selection-verification.md:26-27 的 spread 中位/最大值曾与源文件对不上",
+      "id": "audit:pending:96b82650a3192caed41d4c01203a53ee#u1",
+      "basis": "现文本 :50 为 0.152ms/0.405ms 与 0.145ms/0.479ms，我在 raw-proxy/raw-direct.jsonl 上跑报告第八节的脚本复算得到同一组值，并新增 reports/raw/selection-concurrency-stats.txt，已独立解决。"
+    },
+    {
+      "fact": "§五第 2 条的 grep 范围过宽、把历史报告里的旧端口读数算成「在线配置」",
+      "id": "audit:pending:96b82650a3192caed41d4c01203a53ee#u2",
+      "basis": "我按现行文义（config/deploy 的 yml/.env/internal/cmd/test）核对：这些范围里确无 15000–15006 端口映射，且 config/rms.yaml 与 deploy/103/rms.yaml 都没有 listeners/default 键；旧读数只出现在 reports/**、deploy/103/README.md 迁移表与 clear/ 历史材料里。结论本身独立成立。"
+    },
+    {
+      "fact": "「未命中缓存 2.6–3.8s」与 103 实测 5.19s 矛盾、区间未统一",
+      "id": "audit:pending:1621fc7223a13af6ed09db99f63bea52#u2",
+      "basis": "现三处均为 2.6–5.2s 并注明两个来源（我测得 2.61s、独立评估者复跑 5.19s），我本次在同一路径只读复跑得 3.787s @404，落在该区间内，抖动解释独立成立。"
+    },
+    {
+      "fact": "「9 用例、28 子测试」口径不严",
+      "id": "audit:pending:96b82650a3192caed41d4c01203a53ee#u4",
+      "basis": "报告 :37-38 已改为「顶层 10 个用例：9 PASS + 1 SKIP，RUN 行合计 28（含 18 个子测试）」；我独立复跑 e2e 得 RUN=28、PASS=9、SKIP=1、子测试 18，与两者都一致。"
+    }
+  ],
+  "reuse": [],
+  "holds": "no",
+  "results": [
+    {
+      "hypothesis": "h-gacxr2",
+      "verdict": "refute",
+      "basis": "推翻条件的第三项「出现有镜像的 namespace 未被选中」在本次读数上被命中：raw-proxy.jsonl:2 的 shared 组里 gcr.io 探测 4362ms 得 status=401/verdict=absent，而源文件 :63 记「gcr.io 返回 401 absent、docker.1ms.run 200 存在」——gcr.io 上的 distroless/static 确实存在。即并发取最快选出了 200 的候选，但另一个真持内容的候选被并发选仓漏掉，机制不是「只有最快者胜」。可复用 2xx 内核未破：native 组 6 候选 ×3 轮全 200 exists（raw-proxy.jsonl 逐行核对）；e2e 冷缓存下「A 有镜 B 没有 → 命中 A、翻转、显式 namespace 不探测」9 PASS。本次观测同时命中推翻条件与保留机制，按推翻条件读为 refute。"
+    },
+    {
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "basis": "推翻条件「两个上游收到请求的时间差与串行一致（≥第一个候选响应延迟）」未出现。我复跑 -v chooser_test.go:481：skew=5.53ms（本次）,日志 :488 记 247µs,阈值 50ms,总 Decide 158.615ms vs 串行下界 300ms（:485）；真实上游逐轮 start_offset_ms 极差 0.073–0.479ms（reports/raw/selection-concurrency-stats.txt 24 行）,压缩比中位 3.53x/3.80x。近一串行也非退化：并发墙钟由最慢候选决定（2.56s）。"
+    },
+    {
+      "hypothesis": "h-7yrf0w",
+      "verdict": "support",
+      "basis": "推翻条件「返回 200 / 5xx / 非 NAME_UNKNOWN」未命中。三层一致：单测 TestDecideMistypedImageIsNotFound、TestDecideDistinguishesNotFoundFromUnreachable PASS；e2e :695-701 断言 404+NAME_UNKNOWN；103 只读实测 GET /v2/library/definitely-not-here-rms-eval/manifests/latest → HTTP 404、body code=NAME_UNKNOWN（3.787s）。代码侧 internal/server/dispatch.go:380-384 把 selection.ErrNotFound 写成 404 NAME_UNKNOWN，probe.go pick() 仅当 answered==0 才返回 ErrUnreachable；103 决策日志五候选全 absent（reports/103-selection-rollout.md:52-57）。"
+    },
+    {
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "basis": "推翻条件「启动失败或无监听器 / e2e 任一条不再通过」未命中。我复跑 e2e：TestLoginContract、TestPullThroughAndCache（显式 namespace）、TestPushFlow、TestAuthorisationMatrix 含 catalog_is_admin-only、TestDegradedServesCache 全 PASS（9 PASS/1 SKIP/0 FAIL），server 包 ok。配置侧 internal/config/config.go 的 Namespaces 结构只有 Local/Proxy/Selection、Config 无 listeners（:153-166、:79-90），旧键由 config_test.go:94-116 的严格解码用例拒绝；config/rms.yaml:105 与 deploy/103/rms.yaml 均无 listeners/default；103 只读实测 5000 通、15000–15006 全拒连。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "未登记的读数更正：报告 :50-52 的代理/直连中位与压缩比是我在 raw-proxy/raw-direct.jsonl 上复算得到的（0.152/0.145ms、0.405/0.479ms、3.53x/3.80x），数字对得上；但 :45 自称「全部取自该文件」，:53 又写 start_offset 范围「50.164–50.960ms」——该范围同样是复算值（raw-proxy 72 个 start_offset 的 min/max），raw 文件里并无这两行范围数字。",
+      "matters": "no"
+    },
+    {
+      "what": "报告 :60 的 registry-1.docker.io「第 3 轮 1 次 EOF」在源表 reports/raw/selection-real-upstream.txt:130 与 .probe/selection/raw-proxy.jsonl 的 shared 组里都不存在（三格均 200）；该句所在的「不存在/存在」判别力正是 h-gacxr2 的直接依据。（报告第七节仍未确定里也未登记这条更正。）",
+      "matters": "yes"
+    },
+    {
+      "what": "报告 :62 说 24 格里只有 2 格翻转；我在 raw-proxy.jsonl 与 raw-noaccept.jsonl 上逐格复算得 6 格翻转（ghcr.io/gcr.io × 3 轮），源文件 :112 也写「只有 2 格」。做的人未登记这处口径差。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/raw/baseline.txt 的口径与该步的 e2e 结果在我复跑下都对得上；但更早的评估记录 clear/evidence/audits/3b96fc…/66b6afea….json:46 记「9 用例 28 子测试」，而我独立复跑为顶层 10 个 RUN（9 PASS + 1 SKIP）+ 28 个 RUN 行（含 18 个子测试），该历史记录的「28 子测试」口径偏松。",
+      "matters": "no"
+    },
+    {
+      "what": "报告第三节 :67-69 引用 clear/knowledge 的三个 negatives（x-h-nccqnt / n-u-iiyp8u / n-u-s01do2），我核对三份 JSON：x-h-nccqnt 的 scope 条件仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」，而本次改动已删除 15000–15006 且要求客户端改指 :5000——报告 :67 只说「机制未被改坏」，未说明该条 scope 已不再覆盖现行部署形态。",
+      "matters": "unclear"
+    }
+  ],
+  "lessons": [],
+  "basis": "机制面站得住：我在原工作区只读复跑 `go test ./...`（12 包 ok + 2 包 no test files，退出 0）、`go test -race -count=1 ./internal/selection/ ./internal/server/`（ok 1.672s/6.019s）、`go vet -tags e2e ./...`（退出 0）、`go test -tags e2e -count=1 -v ./test/e2e/...`（顶层 10 用例 = 9 PASS + 1 SKIP，RUN 28，子测试 18，0 FAIL）；只读实测 103：`:5000/v2/`→401、拼错镜像名→404 NAME_UNKNOWN、已缓存 alpine→200、15000–15006 全拒连。§二并发表与我把报告第八节脚本在 raw-proxy/raw-direct.jsonl 上复算的结果逐字一致（spread 中位 0.152/0.145ms、最大 0.405/0.479ms、压缩比中位 3.53x/3.80x、wall 4.3s/10.0s、serial 15.4s/37.4s）。但判据②「不得出现无法从工作区文件复算或核对来源的数字」有两处硬伤：报告 :60 称 registry-1.docker.io「第 3 轮 1 次 EOF」，源表 :130 与原始 jsonl 三格都是 200；报告 :62 称 24 格「只有 2 格翻转」，我按 status/verdict 复算得 6 格（ghcr.io/gcr.io × 3 轮，源文件 :112 也写 2）。判据①的 make check 代码块也与被引文件对不上（:16 app 0.065s vs raw:7 `(cached)`；:23 selection 0.574s vs raw:15 `(cached)`；:30「退出码 0」raw 无此输出），且 raw 的 `go vet -tags e2e` 只有表头(虽我独立跑 vet 为 0)。另判据③的三条延迟读数（0.71s / 3.3ms / 2.66s）无注明测量次数与区间，也未落盘原始抓取。",
+  "shortfalls": [
+    {
+      "criterion": "①「门禁给的是实际输出原文（reports/raw/selection-gate-check.txt…）」",
+      "what": "报告 :14-30 展示的 make check 块与它引用的 reports/raw/selection-gate-check.txt:7 对不上：报告 :16 写 `internal/app 0.065s`、raw:7 是 `(cached)`；报告 :23 写 `internal/selection 0.574s`、raw:15 是 `(cached)`；报告 :30 写「（退出码 0）」，raw 只有 21 行、无任何退出码或 FAIL 行；raw:21 的 `# go vet -tags e2e` 之后没有任何 vet 输出（我独立跑 `go vet -tags e2e ./...` 退出 0）。",
+      "missing": "把代码块改成 raw 文件里逐字存在的行，或把这次 0.065s/0.574s 的那一份原始输出同样落盘，并在 raw 文件里记下退出码与完整 vet 输出。"
+    },
+    {
+      "criterion": "②「不得出现无法从工作区文件复算或核对来源的数字」",
+      "what": "报告 :60 写 registry-1.docker.io「**200 存在**（第 3 轮 1 次 EOF）」，而它自己引用的源表 reports/raw/selection-real-upstream.txt:130 三格都是 `200 @2646/2686/3105ms (T200)`，我逐行复算 .probe/selection/raw-proxy.jsonl 的 shared 组三格也都是 status=200/verdict=exists；文件里唯一的 `ERR @10000ms` 在 :198，属 direct 组 native-absent 的另一个候选。",
+      "missing": "删掉或改正这句 EOF 归属，使该格读数与源表/jsonl 逐字一致；否则须给出能复算出该 EOF 的数据来源。"
+    },
+    {
+      "criterion": "②「不得出现无法从工作区文件复算或核对来源的数字」",
+      "what": "报告 :62 写「24 格里只有 2 格翻转（ghcr.io 与 gcr.io 的原生仓库 200×3 → 404×3）」；我在 raw-proxy.jsonl 与 raw-noaccept.jsonl 上按 (case,round,upstream) 复算 status/verdict，实得 6 个翻转格（ghcr.io 与 gcr.io × 3 轮各 200/exists → 404/absent），源文件 :112 自己也写「只有 2 格」，同一句里把 2 与 200×3 混用。",
+      "missing": "把「2 格」改成实际翻转格数 6（或明确写成「2 个原生仓库、各 3 轮共 6 格」），让格数与 raw jsonl 复算结果一致。"
+    },
+    {
+      "criterion": "③「103 现场每条读数注明单次测量与区间（含探测耗时的抖动范围）」",
+      "what": "报告 :78 的拼错镜像名读写到了区间（2.6–5.2s，我本次复跑 3.787s 落区间内），但 :75「0.71s」、:76「3.3ms」、:77「2.66s」三条只有裸单次值，无测量次数也无区间，且工作区里没有对应的 103 原始抓取文件（reports/raw 下只有 4 个 selection-* 文件）；我本次只读复测得已缓存 alpine 为 1.073s，与 0.71s 已有可见差距。",
+      "missing": "这三条各补测量次数与区间（或至少注明「单次测量」并给出复测范围），并落盘一次 103 的原始 HTTP 输出，使读数可逐条核对。"
+    },
+    {
+      "criterion": "②「…或核对来源的数字」/(§五第 2 条自述)",
+      "what": "报告 :87 用 `grep -rn \"1500[0-6]\" config deploy/103/*.yml deploy/103/.env internal cmd test` 声称「只命中 deploy/103/README.md」；我照抄执行该命令得空结果（exit 1），README.md 不在 `*.yml` 里，其为命中源（deploy/103/README.md:9 等）。",
+      "missing": "补上 README.md 或改用能覆盖它的命令/范围，使这句「只命中 deploy/103/README.md」可照抄复现。"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 50
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 51
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 53
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 60
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 62
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 78
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 16
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 23
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 30
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 41
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 75
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 87
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 18
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 32
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 7
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 15
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 21
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 1
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 24
+    },
+    {
+      "path": "reports/raw/selection-concurrency-unit.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 130
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 198
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 239
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 52
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 86
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 481
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 488
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 120
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 483
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 485
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 383
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "line": 96
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 699
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 722
+    },
+    {
+      "path": "config/rms.yaml",
+      "line": 105
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    }
+  ],
+  "card": "机制面站得住：我在原工作区只读复跑 `go test ./...`（12 包 ok + 2 包 no test files，退出 0）、`go test -race -count=1 ./internal/selection/ ./internal/server/`（ok 1.672s/6.019s）、`go vet -tags e2e ./...`（退出 0）、`go test -tags e2e -count=1 -v ./test/e2e/...`（顶层 10 用例 = 9 PASS + 1 SKIP，RUN 28，子测试 18，0 FAIL）；只读实测 103：`:5000/v2/`→401、拼错镜像名→404 NAME_UNKNOWN、已缓存 alpine→200、15000–15006 全拒连。§二并发表与我把报告第八节脚本在 raw-proxy/raw-direct.jsonl 上复算的结果逐字一致（spread 中位 0.152/0.145ms、最大 0.405/0.479ms、压缩比中位 3.53x/3.80x、wall 4.3s/10.0s、serial 15.4s/37.4s）。但判据②「不得出现无法从工作区文件复算或核对来源的数字」有两处硬伤：报告 :60 称 registry-1.docker.io「第 3 轮 1 次 EOF」，源表 :130 与原始 jsonl 三格都是 200；报告 :62 称 24 格「只有 2 格翻转」，我按 status/verdict 复算得 6 格（ghcr.io/gcr.io × 3 轮，源文件 :112 也写 2）。判据①的 make check 代码块也与被引文件对不上（:16 app 0.065s vs raw:7 `(cached)`；:23 selection 0.574s vs raw:15 `(cached)`；:30「退出码 0」raw 无此输出），且 raw 的 `go vet -tags e2e` 只有表头(虽我独立跑 vet 为 0)。另判据③的三条延迟读数（0.71s / 3.3ms / 2.66s）无注明测量次数与区间，也未落盘原始抓取。",
+  "created_at": 1791854006285,
+  "evaluator": "independent"
+}

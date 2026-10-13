@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-b6d6fad858e0bc3c6f2eff96379be300-u2",
+  "kind": "defect",
+  "status": "defect",
+  "statement": "账本 negatives n-u-fl1myg / n-u-l29jwy 当初记的正是 docker.m.daocloud.io 因 token 绑客户端 IP、大 blob 302 到 R2 而不可用；本次 deploy/103/rms.yaml:95-124 仍把 daocloud 镜像设为 ghcr/gcr/quay/k8s 的首选、docker.io 的第二候选，103 现场随之出现 unreachable:upstream-status（reports/raw/103-final-live-10ns.txt:26-27）——该次「上游改序/增配」没有登记为需复检的异常，也没有在新拓扑下重验这些条目。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者说得对，而且这正是本次两处改序的依据：那两条 negatives（`n-u-fl1myg`、`n-u-l29jwy`）记的正是 daocloud 因 token 绑客户端 IP、大 blob 302 到 R2 而不可用。我最初仍把 daocloud 排在各 namespace 的第一位，属配置与既有证据相悖；103 的决策行（`unreachable:upstream-status`）当场把这个顺序否证。现在四处已改成官方在前、镜像兜底，docker.io 也把 daocloud 放到最后；两条 negatives 也已登记进相关判断的 uses（Frame rev6）。",
+    "by": "up_registry_1_docker_io"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:b6d6fad858e0bc3c6f2eff96379be300#u2",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791863193691,
+  "updated": 1791863329042
+}

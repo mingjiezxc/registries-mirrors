@@ -1,0 +1,214 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "goal_audit",
+  "step_id": "goal:g-mv5eqq0n96w2",
+  "auditor_run_id": "f4a7aaf9-6b36-4db5-bfb0-2bed793f14ed",
+  "rechecks": [],
+  "reuse": [
+    {
+      "id": "x-h-nccqnt",
+      "verdict": "inconclusive",
+      "basis": "条目机制(镜像站 /v2/ 401 挑战让 dockerd 放弃镜像源)我在 103 现场仍观测到(:5000/v2/ → 401),但该条 scope 仍写「端口 5000/15000-15006/9100」,被系统判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17),本次结论不直接采用它。"
+    },
+    {
+      "id": "n-u-iiyp8u",
+      "verdict": "inconclusive",
+      "basis": "条目记 103 直连官方 Hub 间歇 connection reset,与 .probe/selection/raw-direct.jsonl 的 direct 组超时/重置一致;但 scope 仍写 5000/15000-15006/9100,系统判 out_of_scope,不能作为适用依据。"
+    },
+    {
+      "id": "n-u-s01do2",
+      "verdict": "inconclusive",
+      "basis": "条目记「只看 /v2/ 探活会漏掉取内容失败」,正是内部/selection 改仓库级探测的针对对象;但 scope 仍写旧端口,系统判 out_of_scope,本次仅作背景引用。"
+    },
+    {
+      "id": "n-u-l136s0",
+      "verdict": "inconclusive",
+      "basis": "h-0afup5 登记的 use n-u-l136s0 同样被判 out_of_scope(scope 仍写 5000/15000-15006/9100);探测并发性由单测与 raw jsonl 直接支持,不依赖该条。"
+    }
+  ],
+  "holds": "no",
+  "results": [],
+  "anomalies": [
+    {
+      "what": "reports/selection-verification.md:57 与答案 q2 写「6 个候选在各自原生仓库组各 3/3 轮返回 2xx」而未注明出网方式:按 .probe/selection/raw-direct.jsonl 复算,direct 组 native 里 registry.k8s.io 三轮全是传输失败(status 0/ERR),registry-1.docker.io 只有 r1 为 200(r2/r3=401 @10000ms)。报告同节第 2/3 条另按 proxy/direct 分开写,这句无修饰的断言只在 proxy 组成立;做的人未登记。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/selection-verification.md:60 的「24 格里有 6 格翻转」分母与源文件不符:我在 raw-proxy.jsonl 与 raw-noaccept.jsonl 上逐格比对是 72 格(6 候选 × 4 组 × 3 轮)里 6 格翻转(ghcr.io/gcr.io × native × 3 轮),而源文件 reports/raw/selection-real-upstream.txt:112 自己已更正为「3 目标 × 6 候选 × 3 轮 × 2 遍 = 108 个观测」。做的人未登记这处口径差。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:52 的「5 次独立测量 2.5–7.5s」中 2.561s 一例全库无落盘出处(5.19s 是上一轮评估者自己的复跑),只有 reports/raw/103-selection-rollout-live.txt 的三次 7.467/2.493/3.580s 有原始抓取;报告未注明这一点。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:60 与 reports/selection-verification.md:87 把「无仓库名的 blob → 200」写成无条件读数:我在 103 现场复验同一 URL,无最近 manifest 决策时得 503 UNAVAILABLE(日志 source=blob-disk、repo 为空),先生成一次 manifest 决策后立刻请求才 200 @4.1ms / 581 字节(日志 source=affinity)。前置条件只登记在 reports/103-selection-rollout.md:114,表里没写。",
+      "matters": "unclear"
+    },
+    {
+      "what": "reports/103-selection-rollout.md:61 把 sha256:000…0 那次的「source=affinity 完整行」指向 reports/raw/103-child-manifest-and-blob.txt 第 3–4 节;该节只有 BLOB_UNKNOWN 响应体与两条 repo=library/busybox、source=decision-cache 的 kind=blob 行,没有该 digest 的 affinity 行(我现场复现三次 404 BLOB_UNKNOWN 时日志确为 source=affinity,与 reports/raw/103-final-live.txt:36 同类的行)。",
+      "matters": "no"
+    },
+    {
+      "what": "根工作区 .env:16-17 仍有 RMS_PORT_DOCKERIO=5001 / RMS_PORT_GHCR=5002,而 README.md:378 写「.env / .env.example 里也没有 RMS_PORT_DOCKERIO / RMS_PORT_GHCR 这类变量了」;这两个变量已不被 compose 引用,端口也没对外发布(101 现场容器 14f56579da66 与 103 均只发布 5000/9100),因此不违反判据②的 15000–15006 限制。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [
+    {
+      "lesson": "L1",
+      "verdict": "support",
+      "basis": "reports/raw/selection-real-upstream.txt:158 与 .probe/selection/raw-proxy.jsonl 记 Docker Hub 对不存在仓库回 401(token T200)、ghcr.io token_status=403;我 103 现场复验拼错镜像名 → 404 NAME_UNKNOWN、五候选全 absent,修复前后的 503→404 见 reports/raw/selection-notes.md:165、:215 与 internal/selection/probe.go:374 的 5xx/429 分支。"
+    },
+    {
+      "lesson": "L2",
+      "verdict": "support",
+      "basis": "我按 raw-proxy.jsonl 与 raw-noaccept.jsonl 逐格复算得 6 格 200→404(ghcr.io、gcr.io × native × 3 轮);reports/raw/selection-real-upstream.txt:112-114 记内容协商对照与 OCI 文案,回归用例 TestDecideSendsTheManifestAcceptHeader 在 make check 中通过。"
+    },
+    {
+      "lesson": "L3",
+      "verdict": "support",
+      "basis": "reports/raw/101-real-client-and-blob-fix.txt:17 记修复前 GET /v2/library/busybox/blobs/sha256:034d6572… → 404 且日志在探 manifests 路径,:18 记修复后 200/2206402 字节;config-docs-notes.md:231 是 e2e 的 `404 page not found` 原文。"
+    },
+    {
+      "lesson": "L4",
+      "verdict": "support",
+      "basis": "reports/raw/selection-notes.md:185-189 记四象限(A 不可达+B 404 原判 503、现判 404)与「103 形状:4 个回答、1 个挂掉 → 404」;:153 记改判理由;我在 103 现场复验拼错镜像名仍为 404,单测 TestAFailingCandidateStillLosesToAnAnswer、TestServerErrorsAreNotAbsence 随 make check 通过。"
+    },
+    {
+      "lesson": "L5",
+      "verdict": "support",
+      "basis": "reports/raw/101-real-client-and-blob-fix.txt:24 记 103 的 daemon.json 仍指 15000–15006,pulls.txt:14 记 101 经 103:15000 拉取,reports/103-selection-rollout.md:87 记 103 本地 build 因该配置报 connection refused;reports/raw/103-dockerd-mirror-migration.txt:2、:15 记迁移后 31 个容器恢复。"
+    }
+  ],
+  "basis": "六条判据的实质要求我都独立核到:副本里 make check EXIT=0、-race 下 internal/selection 与 internal/server 无竞争、e2e 0 FAIL;从 .probe/selection/raw-*.jsonl 复算得 proxy spread 中位 0.152ms/压缩比中位 3.53x、direct 0.145ms/3.80x,与 selection-concurrency-stats.txt 一致;raw-proxy 与 raw-noaccept 逐格比对得 6 格 200→404 翻转;严格解码复现 field default/listeners not found;103 现场只发布 5000/9100,15000-15006 与 5001/5002 对外均 connection refused,/v2/ 401,缓存 manifest 200/8077 字节/source=cache,拼错镜像名 404 NAME_UNKNOWN,上传会话 503 UNAVAILABLE,决策日志含 kind 与逐候选耗时。但判据⑥的产物文件里有读数与它自称「逐字取自」的原始文件不符(子 manifest 与 blob 两组毫秒数),判据⑤引用的 raw 也不含它报的 11/29 计数——观测与记录对不上,故判不成立;这是两处可定点修复的记录问题,不是实现或上线结果被推翻。",
+  "shortfalls": [
+    {
+      "criterion": "⑥103 上重新部署并留下证据(端口清单、5000 拉取命中缓存、404 与 503 包络、selection 日志里的探测耗时)",
+      "what": "reports/103-selection-rollout.md:47-49 写「三次重复读数逐字取自 reports/raw/103-child-manifest-and-blob.txt」,给出子 manifest `200 @4.9ms / 1.5ms / 1.4ms`(1022 字节)、blob `200 @4.0ms / 1.6ms / 4.7ms`(581 字节);该 raw 文件第 6/9/12 行实为 t=0.004599/0.001232/0.001252s、第 17/19/21 行实为 t=0.002570/0.002752/0.002901s(200 与字节数一致)。",
+      "missing": "把这两行改成 raw 里的实际毫秒数,或补一份含这组数字的原始抓取"
+    },
+    {
+      "criterion": "⑤make check 与 go test -tags e2e 全绿(报告对该项的书面记录)",
+      "what": "reports/103-selection-rollout.md:75 记 e2e「顶层 10 PASS + 1 SKIP、RUN 行合计 29」并把「原始输出」指向 reports/raw/selection-gate-check.txt 与 reports/raw/selection-gate-race-e2e.txt;后者只有 10 个顶层 RUN、28 个 RUN 行,且不含新增的 TestReservePortsNeverRepeat(我在副本复跑=顶层 11 RUN、RUN 行 29、0 FAIL)。",
+      "missing": "补一份与所报 11/29 一致的 -v 原始输出,或把计数收回该文件里的 28/10"
+    }
+  ],
+  "refs": [
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 48
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 49
+    },
+    {
+      "path": "reports/raw/103-child-manifest-and-blob.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/103-child-manifest-and-blob.txt",
+      "line": 17
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 75
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 57
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 60
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 87
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 114
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 61
+    },
+    {
+      "path": "README.md",
+      "line": 378
+    },
+    {
+      "path": ".env",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 36
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 12
+    },
+    {
+      "path": "reports/raw/103-final-live.txt",
+      "line": 3
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 345
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 374
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 499
+    },
+    {
+      "path": "internal/config/config.go",
+      "line": 153
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 745
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 822
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 487
+    },
+    {
+      "path": "clear/goals/g-mv5eqq0n96w2.md",
+      "line": 17
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    }
+  ],
+  "card": "六条判据的实质要求我都独立核到:副本里 make check EXIT=0、-race 下 internal/selection 与 internal/server 无竞争、e2e 0 FAIL;从 .probe/selection/raw-*.jsonl 复算得 proxy spread 中位 0.152ms/压缩比中位 3.53x、direct 0.145ms/3.80x,与 selection-concurrency-stats.txt 一致;raw-proxy 与 raw-noaccept 逐格比对得 6 格 200→404 翻转;严格解码复现 field default/listeners not found;103 现场只发布 5000/9100,15000-15006 与 5001/5002 对外均 connection refused,/v2/ 401,缓存 manifest 200/8077 字节/source=cache,拼错镜像名 404 NAME_UNKNOWN,上传会话 503 UNAVAILABLE,决策日志含 kind 与逐候选耗时。但判据⑥的产物文件里有读数与它自称「逐字取自」的原始文件不符(子 manifest 与 blob 两组毫秒数),判据⑤引用的 raw 也不含它报的 11/29 计数——观测与记录对不上,故判不成立;这是两处可定点修复的记录问题,不是实现或上线结果被推翻。",
+  "created_at": 1791858800984,
+  "evaluator": "independent"
+}

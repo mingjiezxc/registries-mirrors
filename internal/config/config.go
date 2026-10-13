@@ -36,7 +36,6 @@ const (
 const (
 	DefaultListen        = "0.0.0.0:5000"
 	DefaultStorageRoot   = "/data"
-	DefaultNamespace     = "docker.io"
 	DefaultHTTPSecretEnv = "RMS_HTTP_SECRET"
 )
 
@@ -82,7 +81,6 @@ type Config struct {
 	Storage       Storage       `yaml:"storage"`
 	Auth          Auth          `yaml:"auth"`
 	Namespaces    Namespaces    `yaml:"namespaces"`
-	Listeners     []Listener    `yaml:"listeners"`
 	Upstream      Upstream      `yaml:"upstream"`
 	Observability Observability `yaml:"observability"`
 
@@ -153,21 +151,29 @@ type Auth struct {
 
 // Namespaces is the namespace table.
 type Namespaces struct {
-	// Default is the proxy namespace unqualified requests resolve to. It
-	// implements "rms/<user>/<image> -> rms/<default>/<user>/<image>".
-	Default string `yaml:"default"`
 	// Local lists additional writable namespaces. It is merged with
 	// auth.shared_namespaces and, when auth.user_namespace is set, the
 	// htpasswd users.
 	Local []string `yaml:"local"`
 	// Proxy maps an upstream registry domain to its cache settings.
 	Proxy map[string]ProxyNamespace `yaml:"proxy"`
+	// Selection bounds how an unqualified request picks the proxy namespace
+	// that serves it. There is no default namespace: every unqualified request
+	// is decided by probing the proxy namespaces.
+	Selection Selection `yaml:"selection"`
 }
 
 // ProxyNamespace configures a read-only pull-through cache namespace.
 type ProxyNamespace struct {
-	// Upstreams are tried in order. The first healthy one is elected and used
-	// until it fails.
+	// Upstreams are the namespace's upstream endpoints, in **authority order**.
+	//
+	// With racing on (the default) all of them are probed concurrently for the
+	// repository being served and the fastest one wins; the order is what
+	// decides which upstream defines the expected content digest of a tag, so
+	// the first upstream that answers is the one whose bytes a mismatching
+	// mirror is measured against. With racing off the historical semantics
+	// apply: the first healthy upstream in this order is elected and used until
+	// it fails.
 	Upstreams []string `yaml:"upstreams"`
 	// OfficialLibrary mirrors Docker Hub's rule that a single-segment
 	// repository means library/<name>.
@@ -180,19 +186,23 @@ type ProxyNamespace struct {
 	TTL Duration `yaml:"ttl"`
 	// HTTP overrides upstream transport settings for this namespace.
 	HTTP *HTTPClient `yaml:"http"`
+	// UpstreamRace turns racing on or off for this namespace. Nil means on:
+	// every upstream is probed concurrently and the fastest one serves, with
+	// equal-digest upstreams sharing the load. Setting it to false restores the
+	// ordered election (first healthy upstream wins, failover rebuilds the
+	// engine), which is kept for deployments that want a strict preference
+	// order.
+	UpstreamRace *bool `yaml:"upstream_race"`
+	// Balance overrides namespaces.selection.balance for this namespace.
+	// Empty inherits the global default. It is only consulted when racing is
+	// on.
+	Balance string `yaml:"balance"`
 }
 
-// Listener is an additional listening socket.
-type Listener struct {
-	Listen string `yaml:"listen"`
-	// Namespace binds the socket to one namespace so that clients which cannot
-	// express a path prefix (docker registry-mirrors, containerd registries.yaml)
-	// can use it as a transparent mirror. Empty means "multi-namespace", i.e.
-	// the same behaviour as the primary listener.
-	Namespace string `yaml:"namespace"`
-	// ExternalURL overrides the origin used to build URLs for this socket.
-	ExternalURL string `yaml:"external_url"`
-}
+// RaceEnabled reports whether this namespace probes its upstreams concurrently
+// and serves from the fastest one. Racing is on unless it was switched off
+// explicitly.
+func (ns ProxyNamespace) RaceEnabled() bool { return ns.UpstreamRace == nil || *ns.UpstreamRace }
 
 // Upstream holds defaults for talking to upstream registries.
 type Upstream struct {
@@ -377,9 +387,8 @@ func (c *Config) setDefaults() {
 	if c.Auth.Realm == "" {
 		c.Auth.Realm = "rms"
 	}
-	if c.Namespaces.Default == "" {
-		c.Namespaces.Default = DefaultNamespace
-	}
+
+	c.Namespaces.Selection = c.Namespaces.Selection.withDefaults()
 
 	if c.Upstream.Health.Interval == 0 {
 		c.Upstream.Health.Interval = Duration(30 * time.Second)
@@ -402,6 +411,9 @@ func (c *Config) setDefaults() {
 
 	for name, ns := range c.Namespaces.Proxy {
 		ns.HTTP = ns.HTTP.withDefaultsPtr(c.Upstream.HTTP)
+		if ns.Balance == "" {
+			ns.Balance = c.Namespaces.Selection.Balance
+		}
 		c.Namespaces.Proxy[name] = ns
 	}
 
@@ -538,8 +550,22 @@ func (c *Config) Validate() error {
 	if len(c.Namespaces.Proxy) == 0 {
 		errs = append(errs, errors.New("namespaces.proxy: at least one proxy namespace is required"))
 	}
-	if _, ok := c.Namespaces.Proxy[c.Namespaces.Default]; !ok {
-		errs = append(errs, fmt.Errorf("namespaces.default: %q is not defined in namespaces.proxy", c.Namespaces.Default))
+
+	if !ValidBalance(c.Namespaces.Selection.Balance) {
+		errs = append(errs, fmt.Errorf("namespaces.selection.balance: must be %q, %q or %q, got %q",
+			BalanceWeighted, BalanceRoundRobin, BalanceOff, c.Namespaces.Selection.Balance))
+	}
+	if c.Namespaces.Selection.BalanceWindow < 1 {
+		errs = append(errs, fmt.Errorf("namespaces.selection.balance_window: must be >= 1, got %v",
+			c.Namespaces.Selection.BalanceWindow))
+	}
+	if c.Namespaces.Selection.DecisionDeadline < 0 {
+		errs = append(errs, fmt.Errorf("namespaces.selection.decision_deadline: must not be negative, got %s",
+			c.Namespaces.Selection.DecisionDeadline))
+	}
+	if d, p := c.Namespaces.Selection.DecisionDeadline, c.Namespaces.Selection.ProbeTimeout; d > 0 && p > 0 && d > p {
+		errs = append(errs, fmt.Errorf(
+			"namespaces.selection.decision_deadline (%s) must not exceed probe_timeout (%s): a probe cannot be given more time than the decision that bounds it", d, p))
 	}
 
 	for _, name := range sortedKeys(c.Namespaces.Proxy) {
@@ -558,44 +584,19 @@ func (c *Config) Validate() error {
 		if ns.TTL < 0 {
 			errs = append(errs, fmt.Errorf("namespaces.proxy[%s].ttl: must not be negative", name))
 		}
+		if ns.Balance != "" && !ValidBalance(ns.Balance) {
+			errs = append(errs, fmt.Errorf("namespaces.proxy[%s].balance: must be %q, %q or %q, got %q",
+				name, BalanceWeighted, BalanceRoundRobin, BalanceOff, ns.Balance))
+		}
 	}
 
-	local := map[string]string{}
 	for _, name := range append(append([]string{}, c.Namespaces.Local...), c.Auth.SharedNamespaces...) {
 		if err := validateNamespaceName(name); err != nil {
 			errs = append(errs, fmt.Errorf("namespaces.local: %w", err))
-			continue
 		}
 		// No local/proxy collision check is needed: proxy keys must be
 		// domain-like and local names must not be, so the two sets are
 		// disjoint by construction.
-		local[name] = name
-	}
-
-	seen := map[string]string{}
-	for _, l := range c.EffectiveListeners() {
-		if err := validateListen(l.Listen); err != nil {
-			errs = append(errs, fmt.Errorf("listener %q: %w", l.Listen, err))
-			continue
-		}
-		if prev, dup := seen[l.Listen]; dup {
-			errs = append(errs, fmt.Errorf("listener %q is declared twice (namespaces %q and %q)", l.Listen, prev, l.Namespace))
-		}
-		seen[l.Listen] = l.Namespace
-
-		if l.Namespace == "" {
-			continue
-		}
-		if _, ok := c.Namespaces.Proxy[l.Namespace]; !ok {
-			if _, ok := local[l.Namespace]; !ok {
-				errs = append(errs, fmt.Errorf("listener %q: namespace %q is not defined in namespaces.proxy or namespaces.local", l.Listen, l.Namespace))
-			}
-		}
-		if l.ExternalURL != "" {
-			if _, err := url.Parse(l.ExternalURL); err != nil {
-				errs = append(errs, fmt.Errorf("listener %q: external_url: %w", l.Listen, err))
-			}
-		}
 	}
 
 	if c.Observability.Metrics.Path != "" && !strings.HasPrefix(c.Observability.Metrics.Path, "/") {
@@ -669,51 +670,6 @@ func validateNamespaceName(name string) error {
 	return nil
 }
 
-// EffectiveListeners returns the primary listener followed by the extras,
-// each with its external URL resolved.
-func (c *Config) EffectiveListeners() []Listener {
-	out := make([]Listener, 0, len(c.Listeners)+1)
-	out = append(out, Listener{
-		Listen:      c.Server.Listen,
-		Namespace:   "",
-		ExternalURL: c.Server.ExternalURL,
-	})
-	for _, l := range c.Listeners {
-		// A listener that merely restates the primary address is tolerated and
-		// ignored, so an explicit "0.0.0.0:5000 with no namespace" line in the
-		// file is not an error. Anything else colliding with the primary is a
-		// mistake and is reported by Validate.
-		if l.Listen == c.Server.Listen && l.Namespace == "" && l.ExternalURL == "" {
-			continue
-		}
-		if l.ExternalURL == "" {
-			l.ExternalURL = deriveExternalURL(c.Server.ExternalURL, l.Listen)
-		}
-		out = append(out, l)
-	}
-	return out
-}
-
-// deriveExternalURL swaps the port of base for the port of listen. Empty base
-// stays empty so the engine derives the origin from the request.
-func deriveExternalURL(base, listen string) string {
-	if base == "" {
-		return ""
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return ""
-	}
-	_, port, err := net.SplitHostPort(listen)
-	if err != nil {
-		return base
-	}
-	if _, _, err := net.SplitHostPort(u.Host); err == nil {
-		u.Host = net.JoinHostPort(u.Hostname(), port)
-	}
-	return u.String()
-}
-
 // IsLocal reports whether name is a writable namespace declared in the file.
 // htpasswd-derived namespaces are added by the caller.
 func (c *Config) IsLocal(name string) bool {
@@ -745,6 +701,27 @@ func (c *Config) HTTPFor(namespace string) HTTPClient {
 		return c.Upstream.HTTP
 	}
 	return *ns.HTTP
+}
+
+// BalanceFor returns the effective load-balancing mode for a proxy namespace:
+// the namespace's own `balance` when set, otherwise the global default.
+func (c *Config) BalanceFor(namespace string) string {
+	ns, ok := c.Namespaces.Proxy[namespace]
+	if !ok || ns.Balance == "" {
+		return c.Namespaces.Selection.Balance
+	}
+	return ns.Balance
+}
+
+// RaceEnabledFor reports whether a proxy namespace probes its upstreams
+// concurrently. It is false for a namespace that is not configured as a proxy
+// namespace at all.
+func (c *Config) RaceEnabledFor(namespace string) bool {
+	ns, ok := c.Namespaces.Proxy[namespace]
+	if !ok {
+		return false
+	}
+	return ns.RaceEnabled()
 }
 
 func sortedKeys[V any](m map[string]V) []string {

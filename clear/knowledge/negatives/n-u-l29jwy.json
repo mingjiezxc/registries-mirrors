@@ -1,0 +1,36 @@
+{
+  "id": "n-u-l29jwy",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "上游 daocloud 的硬失败已定位到具体环节:它把 blob 302 到 image-mirror.r2.daocloud.vip(Cloudflare R2),rms 侧报 `http2: timeout awaiting response headers`,卡满 60s 才失败并返回 500;同它的 token 绑客户端 IP,使其无法在配代理的情况下使用。据此把 docker.io 上游改为 1ms → 官方并启用局域网代理,改后本步期间未再出现 5xx。",
+  "touches": [
+    "ns_docker_io"
+  ],
+  "evidence": [],
+  "about": [
+    "up_registry_1_docker_io",
+    "ns_docker_io",
+    "host_103",
+    "svc_rms_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-l29jwy",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791816316891,
+  "updated": 1791816316891
+}

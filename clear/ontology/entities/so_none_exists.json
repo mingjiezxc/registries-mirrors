@@ -1,0 +1,11 @@
+{
+  "id": "so_none_exists",
+  "label": "没有任何候选存在该仓库时的选择结果",
+  "type": "selection_outcome",
+  "basis": "s3/s4 的检验靶子：所有候选都 404 时 dispatcher 写回的 registry v2 错误包络",
+  "provenance": {
+    "kind": "named",
+    "ref": "internal/server/dispatch.go"
+  },
+  "note": "口径：HTTP 404 + errors[0].code == \"NAME_UNKNOWN\"；不可达一律返回 503 UNAVAILABLE。"
+}

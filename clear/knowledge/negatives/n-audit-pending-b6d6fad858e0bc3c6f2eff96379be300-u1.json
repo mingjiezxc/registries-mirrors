@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-b6d6fad858e0bc3c6f2eff96379be300-u1",
+  "kind": "defect",
+  "status": "defect",
+  "statement": "交付态把 ghcr.io/gcr.io（及 quay.io、registry.k8s.io）的首选上游设为 daocloud 镜像，103 现场决策行里这两个 namespace 恒为 unreachable:upstream-status（reports/raw/103-final-live-10ns.txt:26-27，选中的镜像回 5xx），而配置里官方兜底存在（deploy/103/rms.yaml:95-101）却从未当选——该镜像对这些路径的探测失败没有任何可见的隔离或回退动作。报告 reports/103-selection-rollout.md:106 把现象当「诊断能力」写出，未登记为需复检的异常，也无知识条目记载；对真存于官方 ghcr/gcr 的镜像，本轮未做真实内容探测。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者观察正确，而且这是我配置顺序造成的：我最初把 daocloud 镜像排在官方之前，103 上线后决策行显示 ghcr.io/gcr.io 恒为 `unreachable:upstream-status`（当选的镜像对这些路径回 5xx），而 `/v2/` 探活正常——正是仓库里记的「探活正常、取内容失败」。已按此改配置：四个 namespace 改为**官方在前、镜像兜底**（`deploy/103/rms.yaml`），重启后同一请求里它们变成 `absent:auth-refused`（官方匿名 token 端点 403 = 明确的「服务不了」，不是「不知道」），语义更准且不再污染 503 边界。交付态读数与说明已落盘 `reports/raw/103-final-live-10ns.txt` 与上线记录「两处刻意偏离」小节。",
+    "by": "ns_ghcr_io"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:b6d6fad858e0bc3c6f2eff96379be300#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791863193691,
+  "updated": 1791863328961
+}

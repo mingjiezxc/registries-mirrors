@@ -1,0 +1,6 @@
+{
+  "gloss": "listeners[] 里带 namespace 的额外端口（含 anonymous_root）：一个端口固定服务一个 namespace，供 containerd/docker 镜像形态使用。本目标删除。",
+  "id": "listener_namespace_binding",
+  "kind": "category",
+  "label": "按 namespace 绑定的监听器"
+}

@@ -1,0 +1,28 @@
+# 103 现场 503 观测 + 决策日志原文（2026-10-13T09:27:55+08:00）· 只读
+## A. 无仓库名、也无 digest 的上传会话路径（应 503 UNAVAILABLE）
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json; charset=utf-8
+Docker-Distribution-Api-Version: registry/2.0
+Date: Tue, 13 Oct 2026 01:27:55 GMT
+Content-Length: 183
+
+{"errors":[{"code":"UNAVAILABLE","message":"cannot determine which namespace serves /v2/blobs/uploads/abc-123: the path names neither a repository nor a blob digest","detail":null}]}
+
+## B. 同一路径重复一次
+http=503
+## C. selection 决策日志（最近 6 条）
+{"time":"2026-10-13T01:13:46.350896353Z","level":"INFO","msg":"selection","repo":"hello-world","ref":"latest","winner":"docker.io","candidates":5,"source":"cache","cached":false}
+{"time":"2026-10-13T01:13:47.570992225Z","level":"INFO","msg":"selection","repo":"hello-world","ref":"latest","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+{"time":"2026-10-13T01:13:49.360217376Z","level":"INFO","msg":"selection","repo":"hello-world","ref":"latest","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+{"time":"2026-10-13T01:13:58.210031993Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=7.466177s(absent)","gcr.io=1.587141s(absent)","ghcr.io=486.005ms(absent)","quay.io=1.304887s(absent)","registry.k8s.io=940.199ms(absent)"]}
+{"time":"2026-10-13T01:14:00.712609479Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=2.491628s(absent)","gcr.io=1.575137s(absent)","ghcr.io=896.671ms(absent)","quay.io=1.294402s(absent)","registry.k8s.io=348.193ms(absent)"]}
+{"time":"2026-10-13T01:14:04.303321542Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=3.57892s(absent)","gcr.io=1.535737s(absent)","ghcr.io=483.609ms(absent)","quay.io=1.358066s(absent)","registry.k8s.io=248.522ms(absent)"]}
+# 5001/5002 是否真的对外监听（2026-10-13T09:28:04+08:00）
+103:5001 http=000
+connection refused
+103:5002 http=000
+connection refused
+
+rms	0.0.0.0:5000->5000/tcp, :::5000->5000/tcp, 0.0.0.0:9100->9100/tcp, :::9100->9100/tcp, 5001-5002/tcp
+--- 容器内 5001/5002 是否在听 ---
+OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH: unknown

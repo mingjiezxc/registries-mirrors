@@ -19,7 +19,9 @@ COPY ${BINARY} /usr/local/bin/rms
 USER 65532:65532
 WORKDIR /
 
-EXPOSE 5000 5001 5002 9100
+# 5000 主端点（唯一内容入口）、9100 指标。5001/5002 曾用于「按 namespace 绑定的镜像端口」，
+# 该特性已删除（见 deploy/103/README.md），不再 EXPOSE。
+EXPOSE 5000 9100
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
     CMD ["/usr/local/bin/rms", "healthcheck", "--addr", "http://127.0.0.1:5000/v2/"]

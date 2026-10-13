@@ -1,0 +1,233 @@
+{
+  "schema_version": "clearai.audit.v2",
+  "kind": "evidence_audit",
+  "step_id": "s5",
+  "auditor_run_id": "270766c7-2a46-41e3-8c0a-f035e1be2dae",
+  "rechecks": [],
+  "reuse": [],
+  "holds": "yes",
+  "results": [
+    {
+      "hypothesis": "h-gacxr2",
+      "verdict": "support",
+      "basis": "native 组 6 候选 × 3 轮全 2xx（.probe/selection/raw-proxy.jsonl 与 raw-direct.jsonl 逐格复算），native-absent 组全 absent；proxy shared 组 library/alpine 上 docker.1ms.run 与 registry-1.docker.io 3/3 轮 200 而 ghcr/gcr/quay 401、registry.k8s.io 404——「存在但慢」与「不存在」被正确区分；e2e TestUnqualifiedPicksNamespaceWithContent 断言两个 namespace 都真被探测过且显式 namespace 路径不触发探测；未出现有镜像的 namespace 未被选中。"
+    },
+    {
+      "hypothesis": "h-0afup5",
+      "verdict": "support",
+      "basis": "24 组 × 6 候选的 start_offset_ms 极差（spread）中位 0.152/0.145ms、逐组最大 0.405/0.479ms，而单次探测耗时 0.2–10s——两上游开始时间差远小于第一个候选的响应延迟，与串行实现不符；单测同一用例本次复跑 skew=71µs、总 Decide 151.146ms（两个各 150ms 候选，串行需 ≥300ms），原文 reports/raw/selection-concurrency-unit.txt:2 为 247µs、151.632ms。"
+    },
+    {
+      "hypothesis": "h-7yrf0w",
+      "verdict": "support",
+      "basis": "103 现场拼错镜像名 → 404 NAME_UNKNOWN，决策日志五候选全 absent（reports/103-selection-rollout.md:52-57 的 timings 全为 absent、无 unreachable）；e2e「a missing tag is NAME_UNKNOWN, not UNAVAILABLE」用两个可达候选断言 404（test/e2e/e2e_test.go:695-703），503 只留给全不可达（同文件 709-726）；无 200、无 5xx、非回落默认仓库。"
+    },
+    {
+      "hypothesis": "h-63ooxn",
+      "verdict": "support",
+      "basis": "严格解码实测：带 default 报 line 4 field default not found in type config.Namespaces、带 listeners 报 line 7 field listeners not found in type config.Config（我用 .probe/bin/rms-check 复跑逐字相同）；单一主端点起来后 e2e 全绿：TestLoginContract、TestPushFlow、TestAuthorisationMatrix（含 catalog_is_admin-only 子测试）、TestDegradedServesCache 与显式 namespace 路径用例均 PASS，0 FAIL。"
+    }
+  ],
+  "anomalies": [
+    {
+      "what": "报告第 49 行把 direct 列的 start_offset_ms 范围标成「同」并沿用 proxy 的 50.164–50.960ms；按同一脚本复算，raw-direct.jsonl 的 72 个 start_offset 实为 50.191–50.878ms（.probe/selection/raw-direct.jsonl）。属口径标注不准，不是不可复算：该值仍能从工作区文件重算。",
+      "matters": "no"
+    },
+    {
+      "what": "报告第 49 行「全部 24 组 × 6 候选」的口径与源表不符：源表 reports/raw/selection-concurrency-stats.txt 列的是每组一行（proxy 12 + direct 12 = 24 组），每行 6 个 start_offset；「24 组」与「全部 6 候选」同指一批数据，未作区分。",
+      "matters": "no"
+    },
+    {
+      "what": "reports/raw/selection-real-upstream.txt:112 的「24 个 (目标 × 候选) 格子」按字面应为 3 目标 × 6 候选 = 18；实际翻转 6 格是「2 个仓库 × 3 轮」，同时计入 proxy 与 noaccept 两遍共 72 个格子。报告第 58 行已按逐格复算写成 6 格翻转（我在 raw-proxy/raw-noaccept 上逐格复算亦得 6 格），仅注解数字的口径仍偏松。",
+      "matters": "no"
+    },
+    {
+      "what": "报告第 56 行引 reports/raw/selection-real-upstream.txt:199 的 `ERR @10000ms` 标为「native-absent 组 registry-1.docker.io」，该组 r1 确为 ERR @10000ms，但 r2/r3 是 401 @10000ms（T0）；该处是同一候选三格里的一格，表述未区分轮次。",
+      "matters": "no"
+    }
+  ],
+  "lessons": [],
+  "basis": "五条判据逐条核过，观测与记录一致：①门禁原文齐（reports/raw/selection-gate-check.txt 含 14 行包结果=12 ok+2 no-test-files、EXIT=0；实测 make check 逐行相同；race 实测 exit 0 与 raw 一致；e2e 原文 28 个 RUN 行=10 顶层(9 PASS+1 SKIP)+18 子测试，与我复跑逐行相同，SKIP 原因在 test/e2e/e2e_test.go:1066-1067 有据）；②复算 .probe/selection/raw-*.jsonl 得 proxy spread 中位 0.152ms/最大 0.405ms、压缩比中位 3.53x(2.80-4.68)、wall/serial 4.3s/15.4s，direct 0.145ms/0.479ms、3.80x(3.00-4.25)、10.0s/37.4s，与 reports/raw/selection-concurrency-stats.txt:19,36 及报告第 46-48 行逐字一致；③103 每条读数各带单次值与区间（live 原文 1.070/1.335/1.084s 等）；④第三节逐条写了三条 negatives 的机制适用性；⑤判据 1-5 均有对应读数（配置严格解码原文我复跑一致）。四条判断均未触及推翻条件。",
+  "shortfalls": [],
+  "refs": [
+    {
+      "path": "reports/selection-verification.md",
+      "line": 15
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 30
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 37
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 46
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 47
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 49
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 56
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 58
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 63
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 73
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 76
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 86
+    },
+    {
+      "path": "reports/selection-verification.md",
+      "line": 90
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 6
+    },
+    {
+      "path": "reports/raw/selection-gate-check.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/selection-gate-race-e2e.txt",
+      "line": 43
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 19
+    },
+    {
+      "path": "reports/raw/selection-concurrency-stats.txt",
+      "line": 36
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 4
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 13
+    },
+    {
+      "path": "reports/raw/selection-unit-and-config.txt",
+      "line": 16
+    },
+    {
+      "path": "reports/raw/selection-concurrency-unit.txt",
+      "line": 2
+    },
+    {
+      "path": "reports/raw/103-selection-rollout-live.txt",
+      "line": 15
+    },
+    {
+      "path": "reports/raw/103-selection-rollout-live.txt",
+      "line": 20
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 40
+    },
+    {
+      "path": "reports/103-selection-rollout.md",
+      "line": 54
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 89
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 112
+    },
+    {
+      "path": "reports/raw/selection-real-upstream.txt",
+      "line": 190
+    },
+    {
+      "path": ".probe/selection/raw-proxy.jsonl",
+      "line": 1
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 255
+    },
+    {
+      "path": "internal/selection/probe.go",
+      "line": 448
+    },
+    {
+      "path": "internal/selection/chooser.go",
+      "line": 53
+    },
+    {
+      "path": "internal/server/dispatch.go",
+      "line": 383
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 481
+    },
+    {
+      "path": "internal/selection/chooser_test.go",
+      "line": 488
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "line": 96
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 659
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 700
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 723
+    },
+    {
+      "path": "test/e2e/e2e_test.go",
+      "line": 1066
+    },
+    {
+      "path": "deploy/103/README.md",
+      "line": 9
+    },
+    {
+      "path": "clear/knowledge/negatives/x-h-nccqnt.json",
+      "line": 20
+    }
+  ],
+  "card": "五条判据逐条核过，观测与记录一致：①门禁原文齐（reports/raw/selection-gate-check.txt 含 14 行包结果=12 ok+2 no-test-files、EXIT=0；实测 make check 逐行相同；race 实测 exit 0 与 raw 一致；e2e 原文 28 个 RUN 行=10 顶层(9 PASS+1 SKIP)+18 子测试，与我复跑逐行相同，SKIP 原因在 test/e2e/e2e_test.go:1066-1067 有据）；②复算 .probe/selection/raw-*.jsonl 得 proxy spread 中位 0.152ms/最大 0.405ms、压缩比中位 3.53x(2.80-4.68)、wall/serial 4.3s/15.4s，direct 0.145ms/0.479ms、3.80x(3.00-4.25)、10.0s/37.4s，与 reports/raw/selection-concurrency-stats.txt:19,36 及报告第 46-48 行逐字一致；③103 每条读数各带单次值与区间（live 原文 1.070/1.335/1.084s 等）；④第三节逐条写了三条 negatives 的机制适用性；⑤判据 1-5 均有对应读数（配置严格解码原文我复跑一致）。四条判断均未触及推翻条件。",
+  "created_at": 1791854395269,
+  "evaluator": "independent"
+}

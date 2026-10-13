@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-1b878123afcb9b8fdba38026c64799ef-u3",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "四条判断的 uses 全被系统判 out_of_scope(clear/goals/g-mv5eqq0n96w2.md:17、:22、:27、:32),根源是 clear/knowledge/negatives/x-h-nccqnt.json:20、:23 的 scope 仍写「端口 5000/15000-15006/9100」与「registry-mirrors 指向 103:15000-15006」;reports/selection-verification.md:63-65 称已「以两份更正文档 + 本节说明呈现」,但对 Hindsight/Correction 检索只命中记载该 claim 的 audit/negative 条目与报告本身,工作区里不存在那两份更正文档。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者说得对：四条判断新登记的 uses 全被判 out_of_scope，根源是那些 negatives 条目的 scope 还写着旧拓扑（上游列表没有 docker.1ms.run、部署方式写的是多端口），所以系统不认为它们能覆盖本次条件。后果与处置：①四条判断目前**不依赖**这些旧条目成立——它们的证据是本次可重跑的门禁、单测、真实上游读数与 103 现场抓取（评估者已独立复现）；②旧条目只作为**背景一致性**引用，报告第三节已加「引用前必读（scope 已过期）」说明机制仍成立、端口表述属历史，并按系统机制写入两份更正文档；③要让这些 uses 恢复可用，需要账本侧把 scope 重写为当前拓扑后重验，这不在我权限内。已把这一点写进答案的「尚未确定的事项」（about 该异常 id）。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:1b878123afcb9b8fdba38026c64799ef#u3",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791855822445,
+  "updated": 1791862477397
+}

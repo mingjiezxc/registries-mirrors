@@ -1,0 +1,7 @@
+{
+  "domain": "service",
+  "id": "service_runs_on_host",
+  "kind": "affects",
+  "label": "服务跑在主机上",
+  "range": "host"
+}

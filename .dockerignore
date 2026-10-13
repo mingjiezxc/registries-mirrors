@@ -1,11 +1,17 @@
 # Never ship these into the image.
+#
+# Directory entries are anchored with a leading slash on purpose: an unanchored
+# "data" also matches vendor/golang.org/x/net/publicsuffix/data/, and dropping
+# that breaks the build with
+#   vendor/golang.org/x/net/publicsuffix/table.go: pattern data/children: no matching files found
 .git
 .gitignore
-.docker
-.gocache
-bin
-data
-docs
+/.docker
+/.gocache
+/.probe
+/bin
+/data
+/docs
 coverage.out
 *.log
 .env

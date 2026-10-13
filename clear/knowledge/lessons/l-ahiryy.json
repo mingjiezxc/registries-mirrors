@@ -1,0 +1,36 @@
+{
+  "id": "l-ahiryy",
+  "goal": "g-mv5eqq0n96w2",
+  "text": "blob 的「存在」必须在 blob 路径上问（`/v2/<repo>/blobs/<digest>`）；用 manifest 路径问一个 layer 摘要会让所有候选都回 absent，客户端拿到 404。带仓库名与不带仓库名两条入口要各走各的。",
+  "kind": "check",
+  "about": [
+    "unqualified_request",
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "evidence": "e2e 原文 `404 page not found`；103 真机原文：`GET /v2/library/busybox/blobs/sha256:034d6572…` → 404，日志显示它在探 manifests 路径。",
+  "boundary": "适用于任何「客户端按路径取子资源、但子资源路径里不含父对象标识」的代理。",
+  "scope_spec": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "basis": "DecideBlobInRepo 走 /v2/<repo>/blobs/<digest>（probe.go:143-169），TestDecideBlobInRepoAsksTheBlobPath 断言上游实际收到的路径，103 现场带仓库名 blob 由 404 修为 200。",
+  "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+  "status": "active",
+  "at": 1791865480019
+}

@@ -1,0 +1,38 @@
+{
+  "id": "n-u-s01do2",
+  "kind": "unresolved",
+  "status": "unresolved",
+  "statement": "预测是「经 25001 拉一个未缓存镜像成功、五个 namespace_up=1」;实际配置与探活都符合,但上游 daocloud 会间歇失败:首次拉 alpine:3.20 花了 4m12s,busybox:latest 一次连续 6 次重试后返回 500(rms 侧累计 11 条 status=500),同一镜像 5 分钟后 17s 拉成功。机制上的缺口已查明:rms 的故障转移由上流探活驱动,而 daocloud 的 /v2/ 始终回 401(判定健康),所以「探活正常、取内容失败」不会自动切换。",
+  "touches": [
+    "ns_docker_io",
+    "up_registry_1_docker_io",
+    "svc_rms_103"
+  ],
+  "evidence": [],
+  "about": [
+    "up_registry_1_docker_io",
+    "ns_docker_io",
+    "svc_rms_103",
+    "host_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose"
+    },
+    "ranges": {}
+  },
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "anomaly": "u-s01do2",
+    "by": "model"
+  },
+  "review": null,
+  "at": 1791814376383,
+  "updated": 1791814376383
+}

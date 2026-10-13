@@ -1,0 +1,38 @@
+############ 103 本机:经默认镜像源(15000)拉未缓存镜像 ############
+$ date; docker rmi -f alpine:3.12; time docker pull alpine:3.12
+2026年 10月 12日 星期一 22:53:08 CST
+Error response from daemon: No such image: alpine:3.12
+1b7ca6aea1dd: Pull complete
+Digest: sha256:c75ac27b49326926b803b9ed43bf088bc220d22556de1bc5f72d742c91398f69
+Status: Downloaded newer image for alpine:3.12
+docker.io/library/alpine:3.12
+
+real	6m49.495s
+user	0m0.023s
+sys	0m0.017s
+
+############ 101 本机:经默认镜像源(103:15000)拉未缓存镜像 ############
+2026年 10月 12日 星期一 22:59:58 CST
+Error response from daemon: No such image: alpine:3.11
+79e9f2f55bf5: Pull complete
+Digest: sha256:bcae378eacedab83da66079d9366c8f5df542d7ed9ab23bf487e3e1a8481375d
+Status: Downloaded newer image for alpine:3.11
+docker.io/library/alpine:3.11
+
+real	3m23.483s
+user	0m0.062s
+sys	0m0.036s
+2026年 10月 12日 星期一 23:03:21 CST
+############ 拉取前后 docker.io 缓存体积与文件数 ############
+44240200969	/opt/stacks/rms/data/docker.io
+5393
+3.11
+3.12
+3.14
+3.15
+3.16
+3.17
+3.18.2
+3.19
+3.20
+latest

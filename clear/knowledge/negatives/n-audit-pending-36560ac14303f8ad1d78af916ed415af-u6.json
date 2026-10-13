@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-36560ac14303f8ad1d78af916ed415af-u6",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "四条判断的 uses 在 clear/goals/g-mv5eqq0n96w2.md:17-32 全被判 out_of_scope（x-h-nccqnt 等 scope 仍写 15000–15006），而 reports/selection-verification.md:63-67 仍以它们作为「与已有条目的关系」依据——引用绕过了适用性判定，报告:62 自述只做到一半",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "四条判断的 uses 在账本投影里全为 out_of_scope，根源是 `x-h-nccqnt` 等条目的 scope 仍写「端口 5000/15000-15006/9100」。本次结论**不依赖**它们（证据是本次可重跑的门禁、单测、真实上游读数与交付态现场抓取）；报告第三节已写「引用前必读（scope 已过期）」并逐条说明哪些机制仍成立。要把它们恢复成可引用的先例，需要账本侧重写 scope 后重验；账本是系统文件，我不能改写。已同时写入答案的「尚未确定的事项」。交给人。",
+    "by": "unqualified_request"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:36560ac14303f8ad1d78af916ed415af#u6",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791864764907,
+  "updated": 1791865191868
+}

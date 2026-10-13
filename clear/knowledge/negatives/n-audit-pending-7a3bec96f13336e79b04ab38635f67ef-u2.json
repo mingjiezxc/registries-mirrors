@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-7a3bec96f13336e79b04ab38635f67ef-u2",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "报告 :60 的 registry-1.docker.io「第 3 轮 1 次 EOF」在源表 reports/raw/selection-real-upstream.txt:130 与 .probe/selection/raw-proxy.jsonl 的 shared 组里都不存在（三格均 200）；该句所在的「不存在/存在」判别力正是 h-gacxr2 的直接依据。（报告第七节仍未确定里也未登记这条更正。）",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者复算正确，是我转写错误：proxy 组 shared 的 registry-1.docker.io 三格都是 200 @2646/2686/3105ms，我在报告里给这句挂了一个不属于它的「第 3 轮 1 次 EOF」（真实 EOF 在 direct 组 native-absent 的另一候选上）。报告第三节已改成逐轮 200 的准确表述，并在原处保留一行更正说明，避免后人再看到那句而困惑。",
+    "by": "ns_docker_io"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:7a3bec96f13336e79b04ab38635f67ef#u2",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791854009275,
+  "updated": 1791862477395
+}

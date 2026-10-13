@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-621f3105c07d07557160156a32909596-u1",
+  "kind": "unresolved",
+  "status": "escalated",
+  "statement": "账本里 verdict=refute 的 evidence e-gqu8jh（及 e-vjvdf4、e-d23908）在工作区与副本中零命中，记录中无人能说明它推翻的是哪条观测；worker 已把它交给人（n-audit-pending-1b878123…-u2.json:33），本轮仍无内容可核。",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "escalated",
+    "reason": "账本里三条 evidence（`e-gqu8jh`、`e-vjvdf4` refute，`e-d23908` inconclusive）在工作区与副本中零命中，我和评估者都读不到正文，因此无法判断它们各自推翻/存疑的是哪条观测，也无法在本轮检验掉。影响：若其中任何一条针对本次四条判断的某条观测，需要账本持有者提供内容我才能复检；本轮四条由独立评估者在副本里复跑门禁、真实上游探针与 103 现场后判为成立。交给人。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:621f3105c07d07557160156a32909596#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791863783072,
+  "updated": 1791863802107
+}

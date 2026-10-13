@@ -1,0 +1,40 @@
+# 新增 namespace 经 daocloud 镜像的实际取用实测（2026-10-13T10:59:24+08:00，103 现场，显式 namespace 路径）
+ghcr.io/astral-sh/uv:latest                                    http=200 t=1.834434s bytes=2195
+gcr.io/distroless/static:latest                                http=200 t=4.395894s bytes=1788
+quay.io/prometheus/busybox:latest                              http=200 t=2.433443s bytes=2004
+registry.k8s.io/pause:3.9                                      http=200 t=0.800145s bytes=2405
+docker.elastic.co/elasticsearch/elasticsearch:8.15.0           http=200 t=2.884248s bytes=685
+mcr.microsoft.com/dotnet/runtime-deps:8.0                      http=200 t=2.197505s bytes=1076
+nvcr.io/nvidia/cuda:12.4.0-base-ubuntu22.04                    http=200 t=4.826271s bytes=743
+dhi.io/alpine-base:3.20                                        http=404 t=5.827014s bytes=98
+k8s.gcr.io/pause:3.9                                           http=200 t=7.793328s bytes=2405
+
+## 一个真实 layer 经 ghcr 的 daocloud 镜像（历史上 daocloud 会 302 到 R2 后卡满 60s）
+  子 manifest: sha256:22fbda6ef3b6466750a6fb1c7ce1d23a2a63a53be91e03d408b6e4274753998d
+  layer: sha256:6878d64b935bede41975b1d01f772d7ff731d12c9c6d3cf3a2877dba5cac24e0
+  layer 取用: http=200 t=110.506977s bytes=20239988
+
+## 无限定请求的候选数（注意：本节抓取于**重启之前**，当时配置刚写入但容器尚未重载，所以下面这三行仍是 candidates=5；重启后的 candidates=10 见本文件末尾「重启后」一节）
+{"time":"2026-10-13T02:56:51.916538027Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:a58ecd4f0c864650a4286c3c2d49c7219a3f2fc8d7a0bf478aa9834acfe14ae7","kind":"blob","winner":"docker.io","candidates":5,"source":"probe","cached":false,"timings":["docker.io=4.90084s","gcr.io=2.562423s(absent)","ghcr.io=1.759235s(absent)","quay.io=1.474124s(absent)","registry.k8s.io=823.92ms(absent)"]}
+{"time":"2026-10-13T02:57:18.436183923Z","level":"INFO","msg":"selection","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","winner":"","repo":"","source":"none"}
+
+## dhi.io 换几个镜像名再试（2026-10-13T11:02:04+08:00）
+dhi.io/alpine:3.20               http=404 t=6.900243s
+dhi.io/alpine-base:3.20          http=404 t=5.116195s
+dhi.io/nginx:latest              http=404 t=3.584551s
+dhi.io/python:latest             http=404 t=12.174141s
+  直连上游看同一路径的回答：
+    dhi.m.daocloud.io /v2/dhi.io/alpine-base → http=401
+    dhi.m.daocloud.io /v2/dhi.io/nginx → http=401
+    （注意：daocloud 的 dhi 镜像仓库名可能不带 dhi.io/ 前缀）
+    dhi.m.daocloud.io /v2/alpine-base → http=502
+    dhi.m.daocloud.io /v2/nginx → http=401
+
+## 同一 20MB layer：经 daocloud 镜像 vs 官方 ghcr.io（对照）
+  经 ghcr.m.daocloud.io（rms 已缓存，直接量 rms 侧）: http=200 t=0.029312s bytes=20239988
+  直连官方 ghcr.io （token+blob，仅测量）: http=307 t=3.748803s bytes=0
+
+## 无限定请求（重启后）候选数与耗时
+  无限定 alpine(已缓存): http=200 t=1.723545s
+  无限定 ghcr.io/astral-sh/uv(显式): http=200 t=1.008857s
+{"time":"2026-10-13T03:02:40.872751094Z","level":"INFO","msg":"selection","repo":"alpine","ref":"latest","kind":"manifest","winner":"docker.io","candidates":10,"source":"cache","cached":false}

@@ -1,0 +1,6 @@
+{
+  "gloss": "rms 的一种监听形态:端口本身就代表某个 upstream namespace,客户端路径里不写 namespace(docker registry-mirrors / containerd registries.yaml 只能表达这种)。",
+  "id": "ns_port_binding",
+  "kind": "category",
+  "label": "端口绑定 namespace 的镜像端点"
+}

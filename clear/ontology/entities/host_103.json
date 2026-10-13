@@ -1,0 +1,10 @@
+{
+  "basis": "承载 rms 部署目标",
+  "id": "host_103",
+  "label": "192.168.188.103 公共容器环境",
+  "provenance": {
+    "kind": "named",
+    "ref": "topology"
+  },
+  "type": "host"
+}

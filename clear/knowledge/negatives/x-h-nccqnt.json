@@ -1,0 +1,48 @@
+{
+  "id": "x-h-nccqnt",
+  "kind": "excluded",
+  "status": "preliminary_excluded",
+  "statement": "101/103 的 daemon.json 保持 15000–15006 不变时,docker pull 未缓存镜像的请求确实落到 rms 并被缓存,而不是被 rms 的 /v2/ 401 挑战逼回官方 Hub。",
+  "about": [
+    "svc_rms_103",
+    "mirror_cfg_clients",
+    "v2_challenge",
+    "service",
+    "service_reachable_via_mirror",
+    "host_103",
+    "stack_registry_legacy",
+    "ns_port_binding"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "registry-1.docker.io,ghcr.io,gcr.io,quay.io,registry.k8s.io,docker.m.daocloud.io",
+      "主机": "192.168.188.103",
+      "端口": "5000/15000-15006/9100",
+      "部署方式": "docker compose",
+      "客户端主机": "192.168.188.101,192.168.188.103",
+      "客户端配置": "daemon.json registry-mirrors 指向 103:15000-15006"
+    },
+    "ranges": {}
+  },
+  "strength": {
+    "count": 1,
+    "independent": 0,
+    "preliminary": true
+  },
+  "evidence": [
+    {
+      "id": "e-w9gfyi",
+      "level": "L2",
+      "evaluator": "self",
+      "basis": "推翻条件命中:dockerd 日志出现 'Head \"http://192.168.188.101:5001/v2/library/alpine/manifests/3.16\": no basic auth credentials',整次拉取前后 rms 请求指标无差异、日志 108→108 行(一个请求都没收到);对照 A 中旧 registry:2 收到了 HEAD manifests 与 GET blob。"
+    }
+  ],
+  "source": {
+    "session": "session-e6aa44ff-4b31-4355-a2e3-d9de9ff41a14",
+    "goal": "g-mv59mcuvcjiz",
+    "hypothesis": "h-nccqnt"
+  },
+  "review": null,
+  "at": 1791810726676,
+  "updated": 1791810726676
+}

@@ -1,0 +1,6 @@
+{
+  "gloss": "一组同属一个 compose 项目、共同提供一项能力的容器集合。",
+  "id": "service_stack",
+  "kind": "category",
+  "label": "服务栈"
+}

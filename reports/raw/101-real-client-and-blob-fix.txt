@@ -1,0 +1,25 @@
+# 真实客户端（101 的 dockerd 经 103:5000 镜像）联调与 blob 修复复验（2026-10-13T10:12:36+08:00）
+
+## A. 101 daemon.json 现状（迁移后）
+ registry-mirrors: ['http://192.168.188.103:5000']
+ insecure-registries: ['10.82.64.172:5000', '10.82.64.172:5001', '10.82.36.43', '10.82.43.49']
+ docker info:
+   Registry Mirrors:
+    http://192.168.188.103:5000/
+   Live Restore Enabled: false
+
+## B. 真实 docker pull（busybox:1.36.1）经镜像
+ 结果：Pull complete / Digest sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 / docker.io/library/busybox:1.36.1
+ 103 侧收到的请求（原文，含 ?ns= 提示）：
+   200 /v2/library/busybox/blobs/sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8
+
+## C. blob 缺陷与修复复验（带仓库名的 layer blob）
+ 修复前（旧镜像 9ad639384d86）：GET /v2/library/busybox/blobs/sha256:034d6572bf28… → 404，selection 日志显示它在探 manifests 路径且全 absent
+ 修复后（新镜像 db6d0948763a）：http=200 t=0.009678s bytes=2206402
+ 对应的 kind=blob 决策日志：
+   {"time":"2026-10-13T02:12:19.761553027Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"probe","cached":false,"timings":["docker.io=1.991075s","gcr.io=0s(skipped)","ghcr.io=502.762ms(absent)","quay.io=792.269ms(absent)","registry.k8s.io=0s(skipped)"]}
+   {"time":"2026-10-13T02:12:37.284813045Z","level":"INFO","msg":"selection","repo":"library/busybox","ref":"sha256:034d6572bf287fa79604fee9be062f0683809ae3a3685bc7b0e17bd1c48c50e8","kind":"blob","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+
+## D. 103 自身 dockerd 的镜像源现状（待修）
+  registry-mirrors: ['http://192.168.188.103:15000', 'http://192.168.188.103:15001', 'http://192.168.188.103:15002', 'http://192.168.188.103:15003', 'http://192.168.188.103:15004', 'http://192.168.188.103:15005', 'http://192.168.188.103:15006']
+  insecure-registries: ['192.168.188.103:15000', '192.168.188.103:15001', '192.168.188.103:15002', '192.168.188.103:15003', '192.168.188.103:15004', '192.168.188.103:15005', '192.168.188.103:15006', '192.168.188.103:15008']

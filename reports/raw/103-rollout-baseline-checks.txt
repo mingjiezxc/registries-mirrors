@@ -1,0 +1,40 @@
+# 103 上线后基线核验原文（2026-10-13T09:35:54+08:00）
+## 1. 旧端口（应全部拒绝）
+  :15000 http=000
+connection refused
+  :15001 http=000
+connection refused
+  :15002 http=000
+connection refused
+  :15003 http=000
+connection refused
+  :15004 http=000
+connection refused
+  :15005 http=000
+connection refused
+  :15006 http=000
+connection refused
+## 2. :5000/v2/ 挑战原文
+  HTTP/1.1 401 Unauthorized
+  Content-Type: application/json; charset=utf-8
+  Docker-Distribution-Api-Version: registry/2.0
+  Www-Authenticate: Basic realm="rms"
+  Date: Tue, 13 Oct 2026 01:35:55 GMT
+## 3. /readyz 与 namespace_up
+  readyz=ready
+  rms_namespace_up{namespace="docker.io"} 1
+  rms_namespace_up{namespace="gcr.io"} 1
+  rms_namespace_up{namespace="ghcr.io"} 1
+  rms_namespace_up{namespace="quay.io"} 1
+  rms_namespace_up{namespace="registry.k8s.io"} 1
+## 4. GET /v2/alpine/manifests/3.19（无限定，已缓存）
+  rep1 http=200 t=1.136101s bytes=8077
+  rep2 http=200 t=1.115409s bytes=8077
+  rep3 http=200 t=1.087879s bytes=8077
+## 5. 缓存命中计数
+  rms_cache_hits_total{namespace="docker.io"} 19
+## 6. selection 决策日志（最近 4 条完整行）
+  {"time":"2026-10-13T01:14:04.303321542Z","level":"INFO","msg":"selection","repo":"library/definitely-not-here-rms","ref":"latest","winner":"","candidates":5,"source":"probe","cached":false,"timings":["docker.io=3.57892s(absent)","gcr.io=1.535737s(absent)","ghcr.io=483.609ms(absent)","quay.io=1.358066s(absent)","registry.k8s.io=248.522ms(absent)"]}
+  {"time":"2026-10-13T01:35:55.22791565Z","level":"INFO","msg":"selection","repo":"alpine","ref":"3.19","winner":"docker.io","candidates":5,"source":"cache","cached":false}
+  {"time":"2026-10-13T01:35:56.372430187Z","level":"INFO","msg":"selection","repo":"alpine","ref":"3.19","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}
+  {"time":"2026-10-13T01:35:57.496191023Z","level":"INFO","msg":"selection","repo":"alpine","ref":"3.19","winner":"docker.io","candidates":5,"source":"decision-cache","cached":true}

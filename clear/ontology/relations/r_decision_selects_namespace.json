@@ -1,0 +1,8 @@
+{
+  "domain": "selection_decision",
+  "id": "r_decision_selects_namespace",
+  "kind": "affects",
+  "label": "决策选定最快候选",
+  "range": "namespace_candidate",
+  "shape": "peak"
+}

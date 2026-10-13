@@ -1,0 +1,45 @@
+{
+  "id": "n-audit-pending-36560ac14303f8ad1d78af916ed415af-u1",
+  "kind": "unresolved",
+  "status": "explained",
+  "statement": "reports/selection-verification.md:79 的 10 候选决策日志自称逐字取自 reports/raw/103-final-live-10ns.txt，但 10 格耗时中 9 格与该文件 :26 不符，且全库检索只命中这一行；工作区给出的异常清单没有登记这一条",
+  "touches": [],
+  "evidence": [],
+  "about": [
+    "svc_rms_103",
+    "ns_docker_io",
+    "ns_ghcr_io",
+    "ns_gcr_io",
+    "ns_quay_io",
+    "ns_registry_k8s_io",
+    "host_103",
+    "svc_rms_sel",
+    "pb_primary_5000",
+    "up_registry_1_docker_io",
+    "pb_15000"
+  ],
+  "scope": {
+    "conditions": {
+      "上游": "10 个 proxy namespace 及其上游（官方 + daocloud 镜像）",
+      "主机": "192.168.188.103",
+      "出网": "局域网代理 192.168.188.1:3128",
+      "客户端": "docker/containerd 直连 103",
+      "部署方式": "docker compose + 单个主端点 :5000"
+    },
+    "ranges": {}
+  },
+  "resolution": {
+    "outcome": "explained",
+    "reason": "评估者说得对，而且原因是我这边：我用重建后的镜像**重新生成了同一份抓取文件**，逐候选耗时随之变化，但报告里那一行还是上一版的数字。已按当前 `reports/raw/103-final-live-10ns.txt` 第 26 行逐字重写该行（dhi.io=1.102377s、docker.elastic.co=2.320632s、docker.io=5.462858s、gcr.io=662.589ms(absent:auth-refused)、ghcr.io=885.498ms(unreachable:upstream-status)、k8s.gcr.io=2.672565s、mcr.microsoft.com=1.523325s、nvcr.io=1.82282s、quay.io=2.946231s、registry.k8s.io=2.672592s），并保留了 404 三次 5.466464/4.825984/10.002103s。该文件此后不再重生成。",
+    "by": "svc_rms_103"
+  },
+  "source": {
+    "session": "session-86581b60-3be7-40e4-866c-8eac6a1ebfac",
+    "goal": "g-mv5eqq0n96w2",
+    "anomaly": "audit:pending:36560ac14303f8ad1d78af916ed415af#u1",
+    "by": "evaluator"
+  },
+  "review": null,
+  "at": 1791864764907,
+  "updated": 1791864784011
+}
