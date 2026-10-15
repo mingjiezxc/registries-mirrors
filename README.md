@@ -12,16 +12,36 @@
 可观测性。
 
 ```text
-客户端 (docker / containerd)  ─┐
-Prometheus                    ─┴─►  一个 rms 进程
+客户端（docker / containerd / k3s）
+  · registry-mirrors：裸 host:port，发无限定名
+  · 显式镜像名：<host>:5000/<ns>/<repo>
+  · hosts.toml + override_path：给某个上游做透明镜像
+        │
+        ▼
+:5000  主端点（唯一内容入口）
+        路径解析 → 选仓（并发探测）→ 上游竞速 → digest 仲裁 → 均衡池 → 鉴权 → 转发
+        │
+        ├─► docker.io         上游 docker.1ms.run · registry-1.docker.io · docker.m.daocloud.io
+        ├─► ghcr.io           上游 ghcr.io · ghcr.m.daocloud.io
+        ├─► gcr.io            上游 gcr.io · gcr.m.daocloud.io
+        ├─► quay.io           上游 quay.io · quay.m.daocloud.io
+        ├─► registry.k8s.io   上游 registry.k8s.io · k8s.m.daocloud.io
+        └─► …                 每个 namespace 一个 distribution 引擎，可任意增删
+        │
+        ▼
+本地缓存  /data/<namespace>/docker/registry/v2/...     层数据本地读；tag 每次回源校验
+
+:9100  指标口  ← Prometheus 抓 /metrics 与 /registry/metrics（/debug/pprof 可选）
 ```
+
+**并发一句话**：冷请求一次就向**所有**「namespace × 它的上游」并发探测，最快的那个真有内容的服务；
+`probe_ttl` 窗口内不再探测。逐级展开见 [§4.8 并发模型](#48-并发模型)。
 
 | 面 | 入口 | 内容 |
 |---|---|---|
 | 客户端 | `:5000` 主端点 | **唯一内容入口**：`/v2/`、`/v2/_catalog`、`/v2/<ns>/<repo>/...`、`/healthz`、`/readyz` |
 | 观测 | `:9100` 指标口 | `/metrics`、`/registry/metrics`、`/debug/pprof/`（需 `observability.pprof`） |
-| 内部流程 | — | namespace 路由 → 选仓（并发探测）→ 上游竞速 → digest 仲裁 → 均衡池 → 转发 |
-| 磁盘 | — | 每 namespace 一个 distribution 引擎，落在 `/data/<namespace>/docker/registry/v2/...` |
+| 磁盘 | — | 每 namespace 一个目录，distribution 原生布局：`/data/<namespace>/docker/registry/v2/...` |
 
 > **只读本文档就能上手**：请求逻辑见 [§4](#4-请求生命周期)，全部配置键与默认值见 [§5](#5-配置参考)，
 > 客户端接入见 [§6](#6-客户端接入)，部署与发布见 [§7](#7-部署)，历史决策与实测记录见[附录 B](#附录-b-变更史与实测记录)。
@@ -31,7 +51,8 @@ Prometheus                    ─┴─►  一个 rms 进程
 - [1. 这是什么](#1-这是什么) · [2. 快速开始](#2-快速开始) · [3. 概念与术语](#3-概念与术语)
 - [4. 请求生命周期](#4-请求生命周期)：[端点](#41-端点与端口) · [路径解析](#42-路径解析顺序) ·
   [选仓](#43-无限定请求的选仓) · [上游竞速与均衡](#44-上游并发digest-权威与负载均衡) ·
-  [鉴权](#45-鉴权与授权) · [缓存与存储](#46-缓存与存储布局) · [降级与故障转移](#47-健康降级与故障转移)
+  [鉴权](#45-鉴权与授权) · [缓存与存储](#46-缓存与存储布局) · [降级与故障转移](#47-健康降级与故障转移) ·
+  [并发模型](#48-并发模型)
 - [5. 配置参考](#5-配置参考)：[加载与展开](#51-加载环境变量展开与严格解码) ·
   [server](#52-server) · [storage](#53-storage) · [auth](#54-auth) · [namespaces](#55-namespaces) ·
   [upstream](#56-upstream) · [observability](#57-observability) ·
@@ -112,6 +133,52 @@ docker push localhost:5000/alice/app:v1               # 推自己的 namespace
 ## 4. 请求生命周期
 
 一个请求依次经过：**端点判定 → 路径解析 → 选仓/选上游（仅 proxy）→ 鉴权 → 转发 → 失败时重选一次**。
+完整的判定流程（标出每一步的并发宽度）：
+
+```text
+GET /v2/<path>   （客户端）
+   │
+   ├─ ① 端点判定              /healthz /readyz /v2/ /v2/_catalog 由 rms 自己回答，不进 namespace
+   │
+   ├─ ② 路径解析（namespace）  首段像域名？→ 该 proxy namespace（直连，不跨 ns 探测）
+   │                          首段是 local？→ 可写 namespace（保留前缀）
+   │                          都不是？      → 无限定请求，交给 ③
+   │
+   ├─ ③ 选仓（仅无限定请求）    ┌ 决策缓存 (repo,ref) 命中？ ──► 直接用，0 次探测   [decision-cache]
+   │                          ├ 某个候选磁盘上已有？   ──► 一次 stat 即胜出      [cache]
+   │                          └ 否则冷路径 ──► 并发扇出 ▼                        [probe]
+   │
+   ▼  并发宽度 = 候选对数 = Σ(每个可服务的 proxy namespace 的上游数)
+   │
+   ├─ namespace docker.io
+   │     docker.1ms.run · registry-1.docker.io · docker.m.daocloud.io
+   ├─ namespace ghcr.io
+   │     ghcr.io · ghcr.m.daocloud.io
+   ├─ namespace registry.k8s.io
+   │     registry.k8s.io · k8s.m.daocloud.io
+   └─ …（每个「namespace × 它的一个上游」= 一个候选对 = 一个 goroutine，同时开始；
+        各自受 probe_timeout 限制、共享请求取消，所以墙钟 = 最慢的那个，而不是它们的和）
+   │
+   │  每个候选对做一次探测（通常就是一次 HEAD /v2/<repo>/manifests/<ref>；blob 请求走 blob 路径）
+   │    2xx → 有 ｜ 401 → 取 Bearer token 重试一次 ｜ 405/501 → 降级 GET
+   │    403/404 → 明确没有 ｜ 5xx/429/超时/网络错误 → 没答上来
+   │
+   ├─ 全部明确没有 → 404 NAME_UNKNOWN        全部没答上来 → 503 UNAVAILABLE
+   │
+   ├─ ④ digest 仲裁（namespace 内）  配置顺序里第一个答出内容的上游 = digest 权威
+   │                                 其余上游 digest 不一致 → 不服务、不均衡（计入 mismatch）
+   │
+   ├─ ⑤ 均衡池                        digest 一致 且 延迟 ≤ balance_window(1.5×) 的上游
+   │                                 weighted(1/延迟) / round_robin / off → 选一个上游
+   │
+   ├─ ⑥ 鉴权 Decide → 转发到 (namespace, upstream) 的引擎
+   │
+   ├─ ⑦ 缓存                           miss：回源并落盘 /data/<ns>/...；hit：本地读
+   │                                  tag 每次回源校验，层数据本地读
+   │
+   └─ ⑧ 失败处理                      404/5xx(GET/HEAD) → 作废决策，重选一次
+                                      内容失败 fail_threshold 次 → 冷却 2×interval
+```
 
 ### 4.1 端点与端口
 
@@ -358,6 +425,43 @@ tag 查询会回落本地，缓存仍可用。
   它回落到该 namespace 的粘性引擎继续服务缓存（best-effort）。
 - **无限定请求**遇到「当前没有任何可服务的 proxy namespace」时，直接 `503 UNAVAILABLE`（那些 namespace 不进入
   候选、也不会被探测）。
+
+### 4.8 并发模型
+
+**并发只发生在「冷决策」那一刻**：决策未命中缓存、且没有任何候选的磁盘上已有该内容时，才会向所有候选对并发
+扇出。其余环节要么是单条连接，要么是逐请求的纯分配。
+
+| 环节 | 并发？ | 并发宽度 | 说明 |
+|---|---|---|---|
+| 决策缓存命中（`decision-cache`） | 否 | 0 次探测 | `probe_ttl`（默认 30s）内复用 (仓库, tag/digest) 的决策 |
+| 某候选磁盘已有（`cache`） | 否 | 0 次探测 | 一次 stat 就胜出，**优先级高于任何探测**，也是上游挂掉时缓存仍可拉的原因 |
+| 冷决策的探测（`probe`） | **是** | 候选对数 = Σ(每个可服务 namespace 的上游数) | 每个候选对 1 个 goroutine，同时开始；各自受 `probe_timeout` 限制，整轮还受可选 `decision_deadline` 收口 |
+| 单个候选对内部 | 顺序 | 1 条连接 | 一次探测最多 3 个请求：`HEAD` / `HEAD`+token（401 后）/ `GET`+token（405、501 时降级） |
+| 同一 namespace 内多个上游 | **是** | = 该 namespace 的上游数 | 这也是 digest 权威的判定范围 |
+| 跨 namespace | **是** | = 当前可服务的 proxy namespace 数 | 跨 namespace **不做** digest 仲裁 |
+| 决策窗口内的后续请求 | 否 | 0 次探测 | 决策缓存命中；均衡池的轮询仍逐请求生效 |
+| 均衡池选一个上游 | 否 | — | 只是分配，不再探测 |
+| 引擎构建 | 懒构建 | 每 (namespace, upstream) 一个 | 只在它被选中/答出内容后构建，共享同一 storage root |
+
+**并发宽度举例**：`deploy/103` 的配置里 10 个 proxy namespace 合计约 14 个上游，一次冷无限定请求就是约
+**14 条并发探测连接**（外加真正取内容的那条）。带 namespace 的请求宽度小得多 —— 只有该 namespace 的上游数。
+
+**三件必须知道的事**：
+
+1. **没有 singleflight**。同一瞬间 N 个客户端同时拉同一个**冷**镜像，会各自跑一轮并发探测（`Chooser` 的锁只
+   保护缓存的读写，不持有整轮竞速）。稳态不放大（窗口内不重复探测），但**冷启动时的并发拉取会成倍放大上游
+   连接** —— 这是「冷决策并发」的代价。
+2. **`decision_deadline` 是收口阀**。默认 `0` = 等全部探测（上限各自 `probe_timeout`）；设成 `3s`（两台现网
+   都这么配）后，**第一个探测答出**再等 3s 就用已有结果决策，未答的候选记 `skipped(decision deadline)` ——
+   它们既不算「没有」，也不会成为 digest 权威（§4.4）。代价是权威上游若正好是慢的那个，这次退化为「只服务
+   最快的一个，不均衡」。
+3. **上游只被探测一次，内容才是逐层取**。每个候选对在决策时只做**一次探测**（最多 3 个请求：`HEAD` /
+   `HEAD`+token / `GET`+token，见上表）；真正的内容请求交给优胜 (namespace, upstream) 的引擎，layer 会按需
+   取多次但**不再探测**。所以上游在冷回源时看到的是「候选对数」次探测 + 1 条真实内容请求；稳态（决策窗口内）
+   接近 0 次探测。
+
+另外两点：探测共享**请求自身的 context**，客户端断开即取消；cache-only（无上游）的 namespace 也会进入候选，
+但它没有上游可问，直接记为 `skipped(no upstream configured)`，由本地磁盘判定来兜底。
 
 ---
 
@@ -988,6 +1092,8 @@ dispatcher 的请求路径与引擎生命周期主要由 `test/e2e` 覆盖（它
 
 文档重构：正文改为「概念 / 请求生命周期 / 完整配置参考 / 客户端 / 部署 / 运维 / 开发」，全部配置键与默认值
 补全（原「关键项」表只覆盖约三分之一），历史与实测收进本附录。**代码与配置未改动。**
+追加：请求工作流程图（含从客户端到各上游 namespace 的扇出）与 [§4.8 并发模型](#48-并发模型)
+（并发宽度 = 候选对数、无 singleflight、`decision_deadline` 收口）。
 顺带修正一处文档错误：`/v2/_catalog` 列出的是**可写 namespace** 的仓库，不含 proxy 缓存 namespace
 （依据 `internal/server/catalog.go` 的 `catalogNamespaces`）。
 
