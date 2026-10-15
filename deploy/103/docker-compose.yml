@@ -1,30 +1,40 @@
-# rms on 192.168.188.103 — 接管原 /opt/stacks/registry 的 registry:2 镜像栈
+# rms on 192.168.188.103 —— 只拉镜像运行，本机不放源码，也不再本地构建。
 #
-# 只剩两个端口:
+# 部署形态（2026-10-13 起）：
+#   * 101（仓库所在机）构建镜像并 push 到 rms.majorc.eu.org/me/rms，
+#     同时打 :<version> 与 :latest 两个 tag —— 见仓库 Makefile 的 `make push`。
+#   * 103 上只留四样东西：docker-compose.yml / .env / config/ / data/。
+#     源码、vendor、Dockerfile、构建产物都不同步过来（这里也没有 build: 段）。
+#   * 更新 = 本机 `docker compose pull` 再 `docker compose up -d`
+#     （仓库侧一条命令：`make update-103`），并在更新后清理旧镜像。
 #
-#   5000   主端点。多 namespace:显式写在路径里(docker.io/library/alpine)就直连
-#          那个 namespace;不写 namespace(library/alpine)则由 rms 并发探测所有
-#          proxy namespace,挑真有该镜像、响应最快的那个。
-#   9100   指标(仅内网)。
+# 为什么这里**不写** pull_policy: always：
+#   rms.majorc.eu.org 就是本机这个容器经网关（192.168.188.1 的 nginx）暴露出来的
+#   入口 —— 自己拉自己。若 up 之前强制拉取，一旦容器正停着（registry 不可达），
+#   `docker compose up -d` 会因为拉取失败而根本起不来。更新脚本的做法是显式
+#   `docker compose pull --policy always`（此时旧容器仍在服务，拉得到），
+#   再 `docker compose up -d` 用本地镜像重建；即使拉取失败也还能用本地镜像恢复。
 #
-# 旧的按上游绑定的端口(每个 upstream 一个口、配 anonymous_root)整体下线。
-# 影响与替代做法见 deploy/103/README.md 的迁移说明;客户端 daemon.json /
-# registries.yaml 里指向这些端口的地方都要改。
+# 端口只剩两个（与仓库根 docker-compose.yml 同形）：
+#   5000   主端点。多 namespace：显式写在路径里（docker.io/library/alpine）就直连
+#          那个 namespace；不写 namespace（library/alpine）则由 rms 并发探测所有
+#          proxy namespace，挑真有该镜像、响应最快的那个。
+#   9100   指标（仅内网）。
 #
-# 上游出网走局域网代理 192.168.188.1:3128(见 .env 与 rms.yaml 的说明):
-# .103 对公共仓库的 /v2/ 握手是直连可达的,但**层下载**直连很糟
-# (1ms 直连 12 KB/s 传不完、经代理 168 KB/s;官方 Hub 直连直接不可达)。
+# 旧的按上游绑定的端口（每个 upstream 一个口、配 anonymous_root）整体下线，
+# 影响与替代做法见 deploy/103/README.md 的迁移说明。
+#
+# 上游出网走局域网代理 192.168.188.1:3128（见 .env 与 rms.yaml 的说明）：
+# .103 对公共仓库的 /v2/ 握手是直连可达的，但**层下载**直连很糟
+# （1ms 直连 12 KB/s 传不完、经代理 168 KB/s；官方 Hub 直连直接不可达）。
 # 旧的 registry:2 栈在 .103 上也是给 5 个镜像配了同一个代理。
 
 services:
   rms:
-    build:
-      context: .
-      dockerfile: ${RMS_DOCKERFILE:-Dockerfile}
-      args:
-        VERSION: ${RMS_VERSION:-dev}
-        COMMIT: ${RMS_COMMIT:-none}
-    image: ${RMS_IMAGE:-rms:dev}
+    # 由 `${RMS_IMAGE}` 指定，默认跟随 rms.majorc.eu.org/me/rms:latest。
+    # 回滚：把 .env 里的 RMS_IMAGE 改成某个历史版本 tag（registry 里都留着），
+    # 再 `docker compose pull && docker compose up -d`。
+    image: ${RMS_IMAGE:-rms.majorc.eu.org/me/rms:latest}
     container_name: rms
     restart: unless-stopped
 
@@ -34,19 +44,22 @@ services:
 
     volumes:
       # 每个 namespace 一个缓存根:./data/<namespace>/docker/registry/v2/...
-      # 旧的 registry:2 缓存就是按 namespace mv 进来的。
+      # 旧的 registry:2 缓存就是按 namespace mv 进来的；推送上去的本地
+      # namespace（data/me/...）也在同一个根下。
       - ${RMS_DATA_DIR:-./data}:/data
-      # 整目录挂载,不逐文件挂:htpasswd 是「写临时文件再 rename」原子替换的,
-      # 文件级 bind mount 会钉住旧 inode,容器永远读到老文件。
+      # 整目录挂载，不逐文件挂：htpasswd 是「写临时文件再 rename」原子替换的，
+      # 文件级 bind mount 会钉住旧 inode，容器永远读到老文件。
+      # （2026-10-14 起 rms.yaml 是 `auth.type: none`，这份 htpasswd 只在回滚到 htpasswd 时用。）
       - ./config:/etc/rms:ro
 
     environment:
       RMS_STORAGE_ROOT: /data
+      # htpasswd 路径。type: none 时不被读取（htpasswdPath 直接返回空），留着供回滚。
       RMS_HTPASSWD: /etc/rms/htpasswd
       RMS_EXTERNAL_URL: ${RMS_EXTERNAL_URL:-}
       RMS_HTTP_SECRET: ${RMS_HTTP_SECRET:-}
-      # 上游出网代理与例外表。rms.yaml 里的 proxy/no_proxy 读的就是这两个变量;
-      # 不在这里传,容器里就是空的(等于直连)——实测直连层下载很差。
+      # 上游出网代理与例外表。rms.yaml 里的 proxy/no_proxy 读的就是这两个变量；
+      # 不在这里传，容器里就是空的（等于直连）——实测直连层下载很差。
       RMS_UPSTREAM_PROXY: ${RMS_UPSTREAM_PROXY:-}
       RMS_NO_PROXY: ${RMS_NO_PROXY:-}
 

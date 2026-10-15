@@ -6,6 +6,7 @@
 #      ghcr.io/gcr.io 恒为 unreachable:upstream-status(镜像回 5xx),而 /v2/ 探活正常。
 #      逐条理由见各 namespace 的注释与 ../reports/103-selection-rollout.md 的「两处刻意偏离」;
 #   2. 上游出网走局域网代理 RMS_UPSTREAM_PROXY(见 .env),不是直连。
+#   3. **auth.type: none(2026-10-14)** —— 拉和推都不再要密码,见 auth 段的理由、代价与收回办法。
 #
 # 已删除的旧形态(2026-10-13):
 #   - namespaces.default:无限定请求不再改写成一个固定仓库,改为并发探测所有
@@ -35,12 +36,34 @@ storage:
     interval: 24h
 
 auth:
-  type: htpasswd
+  # 2026-10-14:由 htpasswd 改成 none —— **拉和推都不再要密码**(与 172 同一天、同因)。
+  #
+  # 为什么:Basic 方案下 /v2/ 必须回 401 挑战(`docker login` 靠它验密码、后续 push 靠它
+  # 带上凭据),而 classic dockerd 拿到 Basic 挑战后就不再发匿名内容请求 —— 显式主机名
+  # 匿名 pull 直接 `no basic auth credentials`(实测:rms 侧来自该 dockerd 的请求数 = 0);
+  # anonymous_pull_proxy/local 只作用于内容路径,救不了。完整实测过程见
+  # deploy/172/README.md 的「2026-10-14 变更」,103 是同一份代码。
+  #
+  # ⚠️ 代价:type: none = 完全开放。任何能连到 rms.majorc.eu.org / 192.168.188.103:5000 的人
+  #   (局域网 + tailnet;公网 DNS 里 rms 指向 192.168.188.11,外部不可路由)都可以:
+  #     push 任意 tag 到 me / shared、DELETE 它们的 manifest 与 blob(storage.delete_enabled: true)、
+  #     匿名读 /v2/_catalog。proxy namespace 的写仍是 403(那是 namespace 属性,与鉴权开关无关)。
+  #   启动日志会打一条 `WARN authentication is disabled...`,`rms config validate` 会打
+  #   `auth: none: PUSHES ARE UNPROTECTED`。收回办法与改动前备份见
+  #   deploy/103/README.md 的「2026-10-14:取消认证(auth.type: none)」。
+  type: none
   htpasswd: "${RMS_HTPASSWD:-/etc/rms/htpasswd}"
   realm: rms
-  user_namespace: true
+  # 下面几项在 type: none 时不参与任何判定(Authenticator 直接放行),保留是为了切回 htpasswd
+  # 时行为与 2026-10-14 之前一致:
+  #   * user_namespace 必须是 false —— Validate 拒绝 `user_namespace: true` + `type: none`;
+  #   * me / shared 由 shared_namespaces 定义,仍是可写本地 namespace(发布镜像 `me/rms` 走这里);
+  #     htpasswd 里 alice/bob/carol 的同名 namespace 不再派生(那三个本来就没有内容)。
+  user_namespace: false
   shared_namespaces: [me, shared]
-  # 代理 namespace 是公共缓存,匿名可读;本地 namespace 保持私有。
+  # 代理 namespace 是公共缓存,匿名可读;本地 namespace 在 type: none 下也一并放开
+  # (anonymous_pull_local 同上:现在不参与判定,保留 false 是为了回滚后仍是「本地 namespace
+  # 读也要登录」的旧形态)。
   anonymous_pull_proxy: true
   anonymous_pull_local: false
   admin_users: [admin]
@@ -52,29 +75,20 @@ namespaces:
   selection:
     # 同 (仓库, tag/digest) 的决策复用多久再重新探测;也是「仓库亲和」窗口:
     # blob 请求路径里没有仓库名,它复用同仓库 manifest 的决策,随这个 TTL 一起过期。
-    # 窗口内不再并发探测(上游连接数不随 layer 数放大)。
     probe_ttl: 30s
     # 单个候选探测的上限,同时也是未命中缓存时请求等待决策的上限。
     # 与 upstream.health.timeout 同量级:走代理时 quay.io/registry.k8s.io 实测 4-5s。
     probe_timeout: 10s
-    # 软截止:第一个探测答出之后再等 3s 就用已有结果决策,未答的候选记为
-    # skipped(decision deadline)。10 个 namespace 里只要有一个镜像站卡住,
-    # 「等全部」就要按 probe_timeout 付费,而冷请求的观感就是这一下。
-    # 0 = 等全部。必须 <= probe_timeout。
+    # 软截止:第一个探测答出后再等 3s 就用已有结果决策,未答的候选记为 skipped。
+    # 10 个 namespace × 各自上游并发时,一个卡住的镜像站不该让冷请求等满 probe_timeout。
     decision_deadline: 3s
-    # 均衡:digest 一致、且延迟在 balance_window 倍以内的上游之间按 1/延迟
-    # 加权轮询;窗口外的镜像不参与均衡(只在当选者失败时接手)。
-    # weighted | round_robin | off
+    # 均衡:digest 一致、且延迟在 balance_window 倍以内的上游按 1/延迟加权轮询。
     balance: weighted
     balance_window: 1.5
 
   proxy:
     docker.io:
-      # 顺序 = digest 权威顺序(默认并发竞争,不再是「第一个健康的当选直到失败」):
-      # 这些上游会被**并发**探测,配置顺序里第一个答出内容的那台定义该 tag 的
-      # digest;其余上游只有 digest 与之相同才会被服务/被均衡。所以「官方在前」
-      # 的含义是「官方定义这口 tag 的内容,镜像站只在与之一致时接手」。
-      # 想要旧的严格顺序语义,给这个 namespace 加 `upstream_race: false`。
+      # 顺序即优先级:第一个探活成功的当选,连续失败自动切到下一个。
       #
       # 2026-10-12 在 .103 上的实测(同一个 2.2MB layer):
       #   daocloud 直连      295 KB/s(小 blob 行,但见下)
@@ -95,10 +109,11 @@ namespaces:
       #
       # 2026-10-13 增补:按人的要求补上 docker.m.daocloud.io,但**排在最后**。
       # 理由就是上面那段实测:daocloud 的失败形态是「/v2/ 探活正常、取内容失败」
-      # (blob 302 到 R2 后挂满 60s;token 绑客户端 IP,走代理直接 401)。
-      # 并发模式下这条更有意义了:内容探测的结论会回灌健康状态,连续失败即进
-      # 冷却期(不再进入候选),所以「探活正常、取内容失败」会被自动切走;
-      # 同时 daocloud 与官方 digest 不一致时也不会被当权威。
+      # (blob 302 到 R2 后挂满 60s;token 绑客户端 IP,走代理直接 401),而
+      # upstream 选举只看 /v2/ 探活 —— 把它放第一位会在探活健康的情况下拿不到层。
+      # 今天复测:docker.m.daocloud.io 的 /v2/ 回 401、0.17s(与其余八个 daocloud
+      # 镜像一样快),所以它作为**第二道**是可用的;若要改成第一位,把下面两行
+      # 对调即可(代价见上)。
       upstreams:
         - "https://docker.1ms.run"
         - "https://registry-1.docker.io"
@@ -131,10 +146,10 @@ namespaces:
     # 九个 daocloud 镜像的 /v2/ 都在 0.17-0.21s 内回 401(见
     # reports/raw/daocloud-mirrors-probe.txt)。
     docker.elastic.co:
-      upstreams: ["https://elastic.m.daocloud.io"]
+      upstreams: ["https://docker.elastic.co","https://elastic.m.daocloud.io"]
 
     dhi.io:
-      upstreams: ["https://dhi.m.daocloud.io"]
+      upstreams: ["https://dhi.io","https://dhi.m.daocloud.io"]
 
     k8s.gcr.io:
       # k8s.gcr.io 是废弃名,官方已迁到 registry.k8s.io —— 这里不是 daocloud
@@ -142,10 +157,10 @@ namespaces:
       upstreams: ["https://registry.k8s.io"]
 
     mcr.microsoft.com:
-      upstreams: ["https://mcr.m.daocloud.io"]
+      upstreams: ["https://mcr.microsoft.com","https://mcr.m.daocloud.io"]
 
     nvcr.io:
-      upstreams: ["https://nvcr.m.daocloud.io"]
+      upstreams: ["https://nvcr.io","https://nvcr.m.daocloud.io"]
 
 # listeners 整段删除:那些按 namespace 绑定的端口已下线,连同
 # anonymous_root 一起不再存在。只剩主端点 5000(见 server.listen)与指标 9100

@@ -25,3 +25,6 @@ coverage.out
 .vscode/
 *.swp
 .DS_Store
+
+# Offline deployment artifacts (deploy/172: docker save tarballs + staging)
+/dist/

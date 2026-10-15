@@ -1,0 +1,69 @@
+# rms on 10.82.64.172（公司内网）—— 部署在 /app/rms。
+#
+# 只 load 现成镜像：这台机器不构建、也不从 registry 拉（102/101 那套 push/pull 在这里
+# 不适用 —— 172 从 101 经 SASE 隧道才能到，镜像走 docker save / scp / docker load）。
+#
+#   # 101（仓库所在机）：
+#   make deploy-172          # 构建 → docker save → scp → 远端 docker load → 重启 + 清理
+#
+#   # 172（ops 用户，需要 sudo：ops 不在 docker 组，/app/rms 属 root）：
+#   sudo docker compose up -d
+#
+# 端口（2026-10-14 起：宿主 5000 → 容器 5000，见 .env 的 RMS_PORT_PRIMARY）：
+#   5000   主端点。2026-10-13 晚原先那套 registry:2（registry0/1/2 + registry + registry-ui）
+#          整个退役，rms 先后接管了 5003、5000 —— 两个端口本来都在各客户端的
+#          `insecure-registries` 里，所以换端口客户端不用改 daemon.json
+#          （5001/5002/5003/5004 现在都是空的）。
+#   9100   指标（容器内外一致）。
+#
+# 这台机器的 rms 有两个身份：
+#   ① 唯一的可写私仓 `ops` —— docker push 10.82.64.172:5000/ops/<镜像>
+#      （2026-10-14 起 `auth.type: none`，拉和推都不需要登录，见 rms.yaml 的 auth 段）；
+#   ② 那 10 个上游的镜像缓存 —— 路径里带 namespace 直连该 namespace，不带 namespace 就
+#      并发探测所有 proxy namespace，挑真有该镜像、响应最快的那个。匿名可拉
+#      （rms.yaml 的 auth.anonymous_pull_proxy: true），所以它能当 dockerd 的
+#      registry-mirrors 用。
+#
+# 不写 pull_policy：镜像由 docker load 送进来，compose 只用本地已有的那份；写了反而会在
+# 公司网络里去够 rms.majorc.eu.org（够不着，up -d 直接失败）。
+
+services:
+  rms:
+    image: ${RMS_IMAGE:-rms.majorc.eu.org/me/rms:latest}
+    container_name: rms
+    restart: unless-stopped
+
+    ports:
+      - "${RMS_PORT_PRIMARY:-5000}:5000"
+      - "${RMS_PORT_METRICS:-9100}:9100"
+
+    volumes:
+      # 每个 namespace 一个缓存根:./data/<namespace>/docker/registry/v2/...
+      # 推送上去的私仓内容也在同一个根下(data/ops/...)。
+      - ${RMS_DATA_DIR:-./data}:/data
+      # 整目录挂载,不逐文件挂:htpasswd 是「写临时文件再 rename」原子替换的,
+      # 文件级 bind mount 会钉住旧 inode,容器永远读到老文件。
+      - ./config:/etc/rms:ro
+
+    environment:
+      RMS_STORAGE_ROOT: /data
+      RMS_HTPASSWD: /etc/rms/htpasswd
+      RMS_EXTERNAL_URL: ${RMS_EXTERNAL_URL:-}
+      RMS_HTTP_SECRET: ${RMS_HTTP_SECRET:-}
+      # 上游出网代理与例外表。rms.yaml 里的 proxy/no_proxy 读的就是这两个变量;
+      # 不在这里传,容器里就是空的(等于直连)——这台机器上直连上游基本不可用。
+      RMS_UPSTREAM_PROXY: ${RMS_UPSTREAM_PROXY:-}
+      RMS_NO_PROXY: ${RMS_NO_PROXY:-}
+
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/rms", "healthcheck", "--addr", "http://127.0.0.1:5000/v2/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
